@@ -2,27 +2,43 @@ import os
 import re
 import queue
 import asyncio
-import imaplib
 import threading
+
+from mailtk.data import Mailbox, ThreadInfo
+
+from imapclient import IMAPClient
+import email
+import imapclient
+
+
+def imap_unescape(v):
+    if v.startswith('"'):
+        mo = re.match(r'^"(?:[^"\\]|\\")*"$', v)
+        assert mo
+        return v[1:-1].replace('\\"', '"')
+    return v
 
 
 class ImapAccount:
     def __init__(self, loop, host, port, ssl):
         self.backend = ImapBackend(loop, host, port, ssl)
 
+    async def connect(self):
+        await self.backend.connect()
+
+    async def disconnect(self):
+        await self.backend.disconnect()
+
     async def __aenter__(self):
-        await self.backend.__aenter__()
+        await self.connect()
         return self
 
     async def __aexit__(self, exc_type, exc, tb):
-        return await self.backend.__aexit__(exc_type, exc, tb)
+        await self.disconnect()
 
     @property
     def capabilities(self):
         return self.backend.capabilities
-
-    async def login(self, user, password):
-        return await self.backend.login(user, password)
 
     def _check_code(self, result):
         code, data = result
@@ -32,21 +48,51 @@ class ImapAccount:
         return data
 
     def parse_mailbox(self, response):
-        mo = re.match(r'^\((?P<a>[^)]+)\) (?P<sep>NIL|"[^"]*") ' +
-                      r'(?P<name>.*)$', response.decode())
-        if not mo:
-            raise ValueError(response.decode())
-        return mo.group('name')
+        flags, delimiter, name = response
+        return Mailbox(name, delimiter, flags)
 
-    async def list(self):
-        response = self._check_code(await self.backend.list())
+    async def list_folders(self):
+        response = await self.backend.list_folders()
         mailboxes = [self.parse_mailbox(r) for r in response]
+        if not any(m.name.lower() == 'inbox' for m in mailboxes):
+            print("Inserting INBOX")
+            mailboxes.insert(0, Mailbox(name='INBOX'))
         return mailboxes
+
+    async def list_messages(self, mailbox):
+        n_messages = await self.backend.select_folder(mailbox.name)
+        if n_messages == 0:
+            return []
+        messages = await self.backend.search()
+        params = [
+            'FLAGS', 'RFC822.SIZE',
+            'BODY.PEEK[HEADER.FIELDS (Date From To Cc Subject ' +
+            'Message-ID References In-Reply-To)]']
+        data = await self.backend.fetch(messages, params)
+
+        def parse(message_key, message_value):
+            message = next(v for k, v in message_value.items()
+                           if k.startswith(b'BODY'))
+            message = email.message_from_bytes(message)
+            info = ThreadInfo(message['To'],
+                              message['Subject'],
+                              message['Date'],
+                              'blurb')
+            return (info, (mailbox, message_key))
+
+        return [parse(k, v) for k, v in data.items()]
+
+    async def fetch_message(self, handle):
+        mailbox, message_key = handle
+        # await self.backend.select_folder(mailbox.name)
+        params = ['RFC822']
+        data, = (await self.backend.fetch([message_key], params)).values()
+        return data[b'RFC822']
 
 
 class ImapBackend:
     BREAK = object()
-    READY = object()
+    NOOP = object()
 
     def __init__(self, loop, host, port, ssl):
         self._loop = loop
@@ -61,12 +107,13 @@ class ImapBackend:
         self._thread = threading.Thread(None, self._run)
         self._breaking = False
 
-    async def __aenter__(self):
+    async def connect(self):
         self._thread.start()
-        self.capabilities = await self._call(self.READY)
+        self.capabilities = await self.capabilities()
         return self
 
-    async def __aexit__(self, exc_type, exc, tb):
+    async def disconnect(self):
+        await self.logout()
         await self._call(self.BREAK)
         self._thread.join()
 
@@ -77,18 +124,26 @@ class ImapBackend:
         self._command_queue.put_nowait((future, method, args))
         if method is self.BREAK:
             self._breaking = True
-        return await future
+        result = await future
+        if isinstance(result, Exception):
+            raise result
+        return result
 
     def _run(self):
         # Run commands in thread
-        class_ = imaplib.IMAP4_SSL if self._ssl else imaplib.IMAP4
-        with class_(self._host, self._port) as conn:
+        if self._ssl:
+            kwargs = dict(
+                ssl_context=imapclient.create_default_context())
+        else:
+            kwargs = {}
+        conn = IMAPClient(self._host, self._port, ssl=self._ssl, **kwargs)
+        try:
             while True:
                 future, method, args = self._command_queue.get()
                 if method is self.BREAK:
                     break
-                elif method is self.READY:
-                    result = conn.capabilities
+                elif method is self.NOOP:
+                    result = None
                 else:
                     # TODO check if future is cancelled
                     try:
@@ -98,6 +153,8 @@ class ImapBackend:
                 self._response_queue.put((future, result))
                 self._command_queue.task_done()
                 os.write(self._ready_w, b'x')
+        finally:
+            conn.shutdown()
 
         assert method is self.BREAK
         self._response_queue.put((future, None))
@@ -111,204 +168,191 @@ class ImapBackend:
         self._response_queue.task_done()
 
     # The following methods were generated by gen-imap.py
-    async def append(self, mailbox, flags, date_time, message):
-        'Append message to named mailbox.'
-        return await self._call('append', mailbox, flags, date_time, message)
+    async def add_flags(self, messages, flags, silent=False):
+        'Add *flags* to *messages* in the currently selected folder.'
+        return await self._call('add_flags', messages, flags, silent)
 
-    async def authenticate(self, mechanism, authobject):
-        'Authenticate command - requires response processing.'
-        return await self._call('authenticate', mechanism, authobject)
+    async def add_gmail_labels(self, messages, labels, silent=False):
+        'Add *labels* to *messages* in the currently selected folder.'
+        return await self._call('add_gmail_labels', messages, labels, silent)
 
-    async def capability(self):
-        '(typ, [data]) = <instance>.'
-        return await self._call('capability')
+    async def append(self, folder, msg, flags=(), msg_time=None):
+        'Append a message to *folder*.'
+        return await self._call('append', folder, msg, flags, msg_time)
 
-    async def check(self):
-        'Checkpoint mailbox on server.'
-        return await self._call('check')
+    async def capabilities(self):
+        'Returns the server capability list.'
+        return await self._call('capabilities')
 
-    async def close(self):
-        'Close currently selected mailbox.'
-        return await self._call('close')
+    async def close_folder(self):
+        'Close the currently selected folder, returning the server'
+        return await self._call('close_folder')
 
-    async def copy(self, message_set, new_mailbox):
-        "Copy 'message_set' messages onto end of 'new_mailbox'."
-        return await self._call('copy', message_set, new_mailbox)
+    async def copy(self, messages, folder):
+        'Copy one or more messages from the current folder to'
+        return await self._call('copy', messages, folder)
 
-    async def create(self, mailbox):
-        'Create new mailbox.'
-        return await self._call('create', mailbox)
+    async def create_folder(self, folder):
+        'Create *folder* on the server returning the server response string.'
+        return await self._call('create_folder', folder)
 
-    async def delete(self, mailbox):
-        'Delete old mailbox.'
-        return await self._call('delete', mailbox)
+    async def delete_folder(self, folder):
+        'Delete *folder* on the server returning the server response string.'
+        return await self._call('delete_folder', folder)
 
-    async def deleteacl(self, mailbox, who):
-        'Delete the ACLs (remove any rights) set for who on mailbox.'
-        return await self._call('deleteacl', mailbox, who)
-
-    async def enable(self, capability):
-        'Send an RFC5161 enable string to the server.'
-        return await self._call('enable', capability)
+    async def delete_messages(self, messages, silent=False):
+        'Delete one or more *messages* from the currently selected'
+        return await self._call('delete_messages', messages, silent)
 
     async def expunge(self):
-        'Permanently remove deleted items from selected mailbox.'
+        'Remove any messages from the currently selected folder that'
         return await self._call('expunge')
 
-    async def fetch(self, message_set, message_parts):
-        'Fetch (parts of) messages.'
-        return await self._call('fetch', message_set, message_parts)
+    async def fetch(self, messages, data, modifiers=None):
+        'Retrieve selected *data* associated with one or more'
+        return await self._call('fetch', messages, data, modifiers)
 
-    async def getacl(self, mailbox):
-        'Get the ACLs for a mailbox.'
-        return await self._call('getacl', mailbox)
+    async def folder_exists(self, folder):
+        'Return ``True`` if *folder* exists on the server.'
+        return await self._call('folder_exists', folder)
 
-    async def getannotation(self, mailbox, entry, attribute):
-        '(typ, [data]) = <instance>.'
-        return await self._call('getannotation', mailbox, entry, attribute)
+    async def folder_status(self, folder, what=None):
+        'Return the status of *folder*.'
+        return await self._call('folder_status', folder, what)
 
-    async def getquota(self, root):
-        "Get the quota root's resource usage and limits."
-        return await self._call('getquota', root)
+    async def get_flags(self, messages):
+        'Return the flags set for each message in *messages* from'
+        return await self._call('get_flags', messages)
 
-    async def getquotaroot(self, mailbox):
-        'Get the list of quota roots for the named mailbox.'
-        return await self._call('getquotaroot', mailbox)
+    async def get_gmail_labels(self, messages):
+        'Return the label set for each message in *messages* in the'
+        return await self._call('get_gmail_labels', messages)
 
-    async def list(self, directory='""', pattern='*'):
-        'List mailbox names in directory matching pattern.'
-        return await self._call('list', directory, pattern)
+    async def getacl(self, folder):
+        'Returns a list of ``(who, acl)`` tuples describing the'
+        return await self._call('getacl', folder)
 
-    async def login(self, user, password):
-        'Identify client using plaintext password.'
-        return await self._call('login', user, password)
+    async def gmail_search(self, query, charset='UTF-8'):
+        "Search using Gmail's X-GM-RAW attribute."
+        return await self._call('gmail_search', query, charset)
 
-    async def login_cram_md5(self, user, password):
-        ' Force use of CRAM-MD5 authentication.'
-        return await self._call('login_cram_md5', user, password)
+    async def has_capability(self, capability):
+        'Return ``True`` if the IMAP server has the given *capability*.'
+        return await self._call('has_capability', capability)
+
+    async def id_(self, parameters=None):
+        'Issue the ID command, returning a dict of server implementation'
+        return await self._call('id_', parameters)
+
+    async def idle(self):
+        'Put the server into IDLE mode.'
+        return await self._call('idle')
+
+    async def idle_check(self, timeout=None):
+        'Check for any IDLE responses sent by the server.'
+        return await self._call('idle_check', timeout)
+
+    async def idle_done(self):
+        'Take the server out of IDLE mode.'
+        return await self._call('idle_done')
+
+    async def list_folders(self, directory='', pattern='*'):
+        'Get a listing of folders on the server as a list of'
+        return await self._call('list_folders', directory, pattern)
+
+    async def list_sub_folders(self, directory='', pattern='*'):
+        'Return a list of subscribed folders on the server as'
+        return await self._call('list_sub_folders', directory, pattern)
+
+    async def login(self, username, password):
+        'Login using *username* and *password*, returning the'
+        return await self._call('login', username, password)
 
     async def logout(self):
-        'Shutdown connection to server.'
+        'Logout, returning the server response.'
         return await self._call('logout')
 
-    async def lsub(self, directory='""', pattern='*'):
-        "List 'subscribed' mailbox names in directory matching pattern."
-        return await self._call('lsub', directory, pattern)
-
-    async def myrights(self, mailbox):
-        'Show my ACLs for a mailbox (i.'
-        return await self._call('myrights', mailbox)
-
     async def namespace(self):
-        ' Returns IMAP namespaces ala rfc2342'
+        'Return the namespace for the account as a (personal, other,'
         return await self._call('namespace')
 
     async def noop(self):
-        'Send NOOP command.'
+        'Execute the NOOP command.'
         return await self._call('noop')
 
-    async def open(self, host='', port=143):
-        'Setup connection to remote server on "host:port"'
-        return await self._call('open', host, port)
-
-    async def partial(self, message_num, message_part, start, length):
-        'Fetch truncated part of a message.'
+    async def oauth2_login(self, user, access_token, mech='XOAUTH2', vendor=None):
+        'Authenticate using the OAUTH2 method.'
         return await self._call(
-            'partial', message_num, message_part, start, length)
+            'oauth2_login', user, access_token, mech, vendor)
 
-    async def print_log(self):
-        return await self._call('print_log')
+    async def oauth_login(self, url, oauth_token, oauth_token_secret, consumer_key='anonymous', consumer_secret='anonymous'):
+        'Authenticate using the OAUTH method.'
+        return await self._call(
+            'oauth_login', url, oauth_token, oauth_token_secret, consumer_key, consumer_secret)
 
-    async def proxyauth(self, user):
-        'Assume authentication as "user".'
-        return await self._call('proxyauth', user)
+    async def plain_login(self, identity, password, authorization_identity=None):
+        'Authenticate using the PLAIN method (requires server support).'
+        return await self._call(
+            'plain_login', identity, password, authorization_identity)
 
-    async def read(self, size):
-        "Read 'size' bytes from remote."
-        return await self._call('read', size)
+    async def remove_flags(self, messages, flags, silent=False):
+        'Remove one or more *flags* from *messages* in the currently'
+        return await self._call('remove_flags', messages, flags, silent)
 
-    async def readline(self):
-        'Read line from remote.'
-        return await self._call('readline')
+    async def remove_gmail_labels(self, messages, labels, silent=False):
+        'Remove one or more *labels* from *messages* in the'
+        return await self._call(
+            'remove_gmail_labels', messages, labels, silent)
 
-    async def recent(self):
-        "Return most recent 'RECENT' responses if any exist,"
-        return await self._call('recent')
+    async def rename_folder(self, old_name, new_name):
+        'Change the name of a folder on the server.'
+        return await self._call('rename_folder', old_name, new_name)
 
-    async def rename(self, oldmailbox, newmailbox):
-        'Rename old mailbox name to new.'
-        return await self._call('rename', oldmailbox, newmailbox)
+    async def search(self, criteria='ALL', charset=None):
+        'Return a list of messages ids from the currently selected'
+        return await self._call('search', criteria, charset)
 
-    async def response(self, code):
-        "Return data for response 'code' if received, or None."
-        return await self._call('response', code)
+    async def select_folder(self, folder, readonly=False):
+        'Set the current folder on the server.'
+        return await self._call('select_folder', folder, readonly)
 
-    async def search(self, charset, *criteria):
-        'Search mailbox for matching messages.'
-        return await self._call('search', charset, *criteria)
+    async def set_flags(self, messages, flags, silent=False):
+        'Set the *flags* for *messages* in the currently selected'
+        return await self._call('set_flags', messages, flags, silent)
 
-    async def select(self, mailbox='INBOX', readonly=False):
-        'Select a mailbox.'
-        return await self._call('select', mailbox, readonly)
+    async def set_gmail_labels(self, messages, labels, silent=False):
+        'Set the *labels* for *messages* in the currently selected'
+        return await self._call('set_gmail_labels', messages, labels, silent)
 
-    async def send(self, data):
-        'Send data to remote.'
-        return await self._call('send', data)
-
-    async def setacl(self, mailbox, who, what):
-        'Set a mailbox acl.'
-        return await self._call('setacl', mailbox, who, what)
-
-    async def setannotation(self, *args):
-        '(typ, [data]) = <instance>.'
-        return await self._call('setannotation', *args)
-
-    async def setquota(self, root, limits):
-        "Set the quota root's resource limits."
-        return await self._call('setquota', root, limits)
+    async def setacl(self, folder, who, what):
+        'Set an ACL (*what*) for user (*who*) for a folder.'
+        return await self._call('setacl', folder, who, what)
 
     async def shutdown(self):
-        'Close I/O established in "open".'
+        'Close the connection to the IMAP server (without logging out)'
         return await self._call('shutdown')
 
-    async def socket(self):
-        'Return socket instance used to connect to IMAP4 server.'
-        return await self._call('socket')
-
-    async def sort(self, sort_criteria, charset, *search_criteria):
-        'IMAP4rev1 extension SORT command.'
-        return await self._call(
-            'sort', sort_criteria, charset, *search_criteria)
+    async def sort(self, sort_criteria, criteria='ALL', charset='UTF-8'):
+        'Return a list of message ids from the currently selected'
+        return await self._call('sort', sort_criteria, criteria, charset)
 
     async def starttls(self, ssl_context=None):
+        'Switch to an SSL encrypted connection by sending a STARTTLS command.'
         return await self._call('starttls', ssl_context)
 
-    async def status(self, mailbox, names):
-        'Request named status conditions for mailbox.'
-        return await self._call('status', mailbox, names)
+    async def subscribe_folder(self, folder):
+        'Subscribe to *folder*, returning the server response string.'
+        return await self._call('subscribe_folder', folder)
 
-    async def store(self, message_set, command, flags):
-        'Alters flag dispositions for messages in mailbox.'
-        return await self._call('store', message_set, command, flags)
+    async def thread(self, algorithm='REFERENCES', criteria='ALL', charset='UTF-8'):
+        'Return a list of messages threads from the currently'
+        return await self._call('thread', algorithm, criteria, charset)
 
-    async def subscribe(self, mailbox):
-        'Subscribe to new mailbox.'
-        return await self._call('subscribe', mailbox)
+    async def unsubscribe_folder(self, folder):
+        'Unsubscribe to *folder*, returning the server response string.'
+        return await self._call('unsubscribe_folder', folder)
 
-    async def thread(self, threading_algorithm, charset, *search_criteria):
-        'IMAPrev1 extension THREAD command.'
-        return await self._call(
-            'thread', threading_algorithm, charset, *search_criteria)
-
-    async def uid(self, command, *args):
-        'Execute "command arg .'
-        return await self._call('uid', command, *args)
-
-    async def unsubscribe(self, mailbox):
-        'Unsubscribe from old mailbox.'
-        return await self._call('unsubscribe', mailbox)
-
-    async def xatom(self, name, *args):
-        'Allow simple extension commands'
-        return await self._call('xatom', name, *args)
+    async def xlist_folders(self, directory='', pattern='*'):
+        'Execute the XLIST command, returning ``(flags, delimiter,'
+        return await self._call('xlist_folders', directory, pattern)
     # End generated methods
