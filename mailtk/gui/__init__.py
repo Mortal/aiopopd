@@ -41,4 +41,4 @@ class MailGui(tkinter.Tk):
         self.message.set_value(msg)
 
     def set_message(self, message: bytes):
-        self.message.set_value(message.decode().replace('\r', ''))
+        self.message.set_message(message)
