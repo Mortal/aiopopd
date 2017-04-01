@@ -4,12 +4,18 @@ import queue
 import asyncio
 import threading
 
-from mailtk.data import Mailbox, ThreadInfo, Flag
+from mailtk.data import Mailbox, ThreadInfo, Flag, namedtuple
 
 from imapclient import IMAPClient
 import email
 import imapclient
 from mailtk.util import decode_any_header
+
+
+class ThreadMessage(namedtuple.abc):
+    _fields = (
+        'flag', 'size', 'date', 'from_', 'to', 'cc', 'subject',
+        'message_id', 'references', 'in_reply_to', 'key', 'children')
 
 
 class MailboxImap(Mailbox):
@@ -90,28 +96,70 @@ class ImapAccount:
                 return Flag.unread
 
         def parse(message_key, message_value):
-            flag = parse_flags(message_value[b'FLAGS'])
-            size = message_value[b'RFC822.SIZE']
-            message = next(v for k, v in message_value.items()
-                           if k.startswith(b'BODY'))
-            message = email.message_from_bytes(message)
-            info = ThreadInfo(
-                recipients=message['To'],
-                subject=str(decode_any_header(message['Subject'])),
-                date=email.utils.parsedate_to_datetime(message['Date']),
-                excerpt='blurb',
+            message_value.pop(b'SEQ', None)
+            flag = parse_flags(message_value.pop(b'FLAGS'))
+            size = message_value.pop(b'RFC822.SIZE')
+            (k, message_bytes), = message_value.items()
+            assert k.startswith(b'BODY')
+            mime = email.message_from_bytes(message_bytes)
+
+            def header(k, d=None):
+                v = mime[k]
+                return d if v is None else str(decode_any_header(v))
+
+            message_id = header('Message-ID')
+            return message_id, ThreadMessage(
                 flag=flag,
                 size=size,
+                date=email.utils.parsedate_to_datetime(
+                    header('Date')),
+                from_=header('From'),
+                to=header('To'),
+                cc=header('Cc'),
+                subject=header('Subject'),
+                message_id=message_id,
+                references=header('References', '').split(),
+                in_reply_to=header('In-Reply-To', '').split(),
+                key=message_key,
+                children=[],
             )
-            return ThreadInfoImap(info, mailbox, message_key)
 
-        messages = [parse(k, v) for k, v in data.items()]
-        messages.sort(key=lambda o: o[0].date, reverse=True)
-        return messages
+        messages = dict(parse(k, v) for k, v in data.items())
+        toplevel = []
+        for m in messages.values():
+            for p in m.in_reply_to + m.references:
+                try:
+                    messages[p].children.append(m)
+                    break
+                except KeyError:
+                    pass
+            else:
+                toplevel.append(m)
+
+        def thread_date(m):
+            return max([m.date] +
+                       [thread_date(c) for c in m.children])
+
+        toplevel.sort(key=thread_date, reverse=True)
+
+        def convert(o: ThreadMessage):
+            v = ThreadInfo(
+                flag=o.flag,
+                size=o.size,
+                date=o.date,
+                sender=o.from_,
+                recipients=', '.join(filter(None, (o.to, o.cc))),
+                subject=o.subject,
+                children=[convert(c) for c in o.children],
+                excerpt='',
+            )
+            return ThreadInfoImap(v, mailbox, o.key)
+
+        return [convert(t) for t in toplevel]
 
     async def fetch_message(self, threadinfo):
-        assert isinstance(threadinfo, ThreadInfoImap)
-        mailbox = threadinfo.mailbox
+        assert isinstance(threadinfo, ThreadInfoImap), type(threadinfo)
+        # mailbox = threadinfo.mailbox
         message_key = threadinfo.message_key
         # await self.backend.select_folder(mailbox.name)
         params = ['RFC822']

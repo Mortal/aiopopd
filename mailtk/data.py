@@ -22,7 +22,8 @@ class Flag(Enum):
 
 
 class ThreadInfo(namedtuple.abc):
-    _fields = 'recipients subject date excerpt flag size'
+    _fields = ('flag', 'size', 'date', 'sender', 'recipients', 'subject',
+               'children', 'excerpt')
 
 
 class Mailbox(namedtuple.abc):

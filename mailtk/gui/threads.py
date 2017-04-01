@@ -39,15 +39,22 @@ class Threads(tkinter.ttk.Frame, WidgetMixin):
     async def treeview_close(self, ev):
         pass
 
+    def _insert_children(self, threads, parent):
+        for o in threads:
+            values = tuple(getattr(o, k) for k in self.thread_columns)
+            v = self.tv.insert(parent, tkinter.END, text=o.subject,
+                               values=values)
+            self._thread_map[v] = o
+            self._insert_children(o.children, v)
+            if o.children:
+                self.tv.item(v, open=True)
+
     def set_threads(self, threads, skip, total):
         self._thread_map = {}
         self.tv.set_children('')
         dummy = tuple('-' for _ in self.thread_columns)
         for i in range(skip):
             self.tv.insert('', tkinter.END, text='%s' % i, values=dummy)
-        for i, o in enumerate(threads, skip):
-            values = tuple(getattr(o, k) for k in self.thread_columns)
-            v = self.tv.insert('', tkinter.END, text=o.subject, values=values)
-            self._thread_map[v] = o
+        self._insert_children(threads, '')
         for i in range(skip + len(threads), total):
             self.tv.insert('', tkinter.END, text='%s' % i, values=dummy)

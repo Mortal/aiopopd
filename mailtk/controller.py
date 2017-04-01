@@ -7,6 +7,11 @@ import pprint
 class ThreadAccount(ThreadInfo):
     _fields = 'account'
 
+    @property
+    def children(self):
+        return [ThreadAccount(c, self.account)
+                for c in self.inner_threadinfo.children]
+
 class MailboxAccount(Mailbox):
     _fields = 'account'
 
