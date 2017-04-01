@@ -1,16 +1,15 @@
-from collections import namedtuple
+from mailtk.namedtuple_with_abc import namedtuple
 
 
-ThreadInfo = namedtuple(
-    'ThreadInfo', 'recipients subject date excerpt')
+class ThreadInfo(namedtuple.abc):
+    _fields = 'recipients subject date excerpt'
 
-class ThreadAccount(namedtuple('ThreadAccount', 'inner account handle')):
-    def __getattr__(self, k):
-        return getattr(self.inner, k)
+class ThreadAccount(ThreadInfo):
+    _fields = 'account handle'
 
 
-Mailbox = namedtuple('Mailbox', 'name delimiter flags')
+class Mailbox(namedtuple.abc):
+    _fields = 'name delimiter flags'
 
-class MailboxAccount(namedtuple('MailboxAccount', 'inner account')):
-    def __getattr__(self, k):
-        return getattr(self.inner, k)
+class MailboxAccount(Mailbox):
+    _fields = 'account'
