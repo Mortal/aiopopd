@@ -40,7 +40,7 @@ async def get_imap(controller):
     imap = ImapAccount(loop, host, port, ssl)
     await imap.connect()
     controller.log_debug('Connected to IMAP, capabilities %r' %
-                         (imap.capabilities,))
+                         (await imap.capabilities(),))
     await imap.backend.login(user, password)
     controller.log_debug('Logged in as %r' % (user,))
     return imap

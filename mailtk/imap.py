@@ -45,9 +45,8 @@ class ImapAccount:
     async def __aexit__(self, exc_type, exc, tb):
         await self.disconnect()
 
-    @property
-    def capabilities(self):
-        return self.backend.capabilities
+    async def capabilities(self):
+        return await self.backend.capabilities()
 
     def _check_code(self, result):
         code, data = result
@@ -138,8 +137,6 @@ class ImapBackend:
 
     async def connect(self):
         self._thread.start()
-        self.capabilities = await self.capabilities()
-        return self
 
     async def disconnect(self):
         await self.logout()
