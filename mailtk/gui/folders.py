@@ -20,6 +20,6 @@ class Folders(tkinter.ttk.Treeview, WidgetMixin):
         self._folder_map = {}
         self.set_children('')
         for o in folders:
-            v = self.insert('', tkinter.END, text=repr(o.name))
+            v = self.insert('', tkinter.END, text=o.name)
             self._folder_map[v] = o
             self.insert(v, 0, text='Test')
