@@ -140,7 +140,14 @@ class ImapBackend:
                 ssl_context=imapclient.create_default_context())
         else:
             kwargs = {}
-        conn = IMAPClient(self._host, self._port, ssl=self._ssl, **kwargs)
+        try:
+            conn = IMAPClient(self._host, self._port, ssl=self._ssl, **kwargs)
+        except Exception as exn:
+            future, method, args = self._command_queue.get()
+            self._response_queue.put((future, exn))
+            self._command_queue.task_done()
+            os.write(self._ready_w, b'x')
+            return
         try:
             while True:
                 future, method, args = self._command_queue.get()

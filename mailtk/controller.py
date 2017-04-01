@@ -28,7 +28,11 @@ class Controller:
             self.ensure_future(self.init_account(k, v))
 
     async def init_account(self, account_name, get_account):
-        account = await get_account(self)
+        try:
+            account = await get_account(self)
+        except Exception as exn:
+            self.log_debug("Failed to connect to %r: %r" % (account_name, exn))
+            return
         mailboxes = await account.list_folders()
         self.log_debug(repr(mailboxes))
         assert all(isinstance(f, Mailbox) for f in mailboxes)
