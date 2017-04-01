@@ -4,7 +4,7 @@ from mailtk.gui.mixin import WidgetMixin
 
 
 class Threads(tkinter.ttk.Frame, WidgetMixin):
-    thread_columns = ('recipients', 'flag', 'size', 'date', 'excerpt')
+    thread_columns = ('sender', 'flag', 'size', 'date', 'excerpt')
 
     def __init__(self, parent):
         super().__init__(parent)
