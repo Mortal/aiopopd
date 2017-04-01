@@ -1,5 +1,6 @@
 import tkinter.ttk
 from mailtk.gui.mixin import WidgetMixin
+from mailtk.gui.autoscrollbar import AutoScrollbar
 import email
 from mailtk.util import decode_any_header
 
@@ -10,7 +11,7 @@ class Message(tkinter.Frame, WidgetMixin):
 
     def __init__(self, parent):
         super().__init__(parent)
-        self.scrollbar = tkinter.ttk.Scrollbar(self, orient=tkinter.VERTICAL)
+        self.scrollbar = AutoScrollbar(self, orient=tkinter.VERTICAL)
         self.txt = tkinter.Text(self, state=tkinter.DISABLED,
                                 yscrollcommand=self.scrollbar.set)
         self.txt.configure(**self.style.configure('Message.Text'))

@@ -1,4 +1,5 @@
 import tkinter.ttk
+from mailtk.gui.autoscrollbar import AutoScrollbar
 from mailtk.gui.mixin import WidgetMixin
 
 
@@ -7,7 +8,7 @@ class Threads(tkinter.ttk.Frame, WidgetMixin):
 
     def __init__(self, parent):
         super().__init__(parent)
-        self.scrollbar = tkinter.ttk.Scrollbar(self, orient=tkinter.VERTICAL)
+        self.scrollbar = AutoScrollbar(self, orient=tkinter.VERTICAL)
         self.tv = tkinter.ttk.Treeview(self, columns=self.thread_columns,
                                        style='Threads.Treeview',
                                        yscrollcommand=self.scrollbar.set)
