@@ -1,7 +1,14 @@
 import asyncio
-from mailtk.data import Mailbox, MailboxAccount, ThreadAccount
+from mailtk.data import Mailbox, ThreadInfo
 import traceback
 import pprint
+
+
+class ThreadAccount(ThreadInfo):
+    _fields = 'account'
+
+class MailboxAccount(Mailbox):
+    _fields = 'account'
 
 
 class Controller:
@@ -57,8 +64,8 @@ class Controller:
     async def _set_selected_folder(self, account_name, folder):
         mailbox, account = folder
         result = await account.list_messages(mailbox)
-        result = [ThreadAccount(inner, account, handle)
-                  for inner, handle in result]
+        result = [ThreadAccount(thread, account)
+                  for thread in result]
         self.gui.set_threads(result)
         self.gui.set_message(None)
 
@@ -68,7 +75,7 @@ class Controller:
     async def _set_selected_thread(self, thread):
         self.log_debug(repr(thread))
         self.log_debug('Fetching %r...' % (thread.subject,))
-        message = await thread.account.fetch_message(thread.handle)
+        message = await thread.account.fetch_message(thread.inner_threadinfo)
         self.gui.set_message(message)
         # mailbox, account = folder
         # result = await account.list_messages(mailbox)
