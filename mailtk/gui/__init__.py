@@ -5,31 +5,36 @@ import tkinter.ttk
 from mailtk.gui.folders import Folders
 from mailtk.gui.threads import Threads
 from mailtk.gui.message import Message
+from mailtk.gui.style import Style
 
 
 class MailGui(tkinter.Tk):
     def __init__(self, loop):
         super().__init__()
+        self.style = Style(self)
         self.loop = loop
         self.controller = None
         self.title('MailTk')
         self.hpane = tkinter.ttk.Panedwindow(self, orient='horizontal')
+        self.hpane.pack(fill='both', expand=True)
         self.folders = Folders(self)
         self.vpane = tkinter.ttk.Panedwindow(self, orient='vertical')
+        self.vpane.pack(fill='both', expand=True)
         self.threads = Threads(self)
         self.message = Message(self)
-        self.hpane.add(self.folders)
-        self.vpane.add(self.threads)
-        self.vpane.add(self.message)
-        self.vpane.pack(fill='both', expand=True)
-        self.hpane.add(self.vpane)
-        self.hpane.pack(fill='both', expand=True)
+        self.hpane.add(self.folders, weight=1)
+        self.vpane.add(self.threads, weight=1)
+        self.vpane.add(self.message, weight=1)
+        self.hpane.add(self.vpane, weight=1)
 
     def selected_folder(self):
         return self.folders.selected_folder()
 
-    def set_folders(self, mailboxes):
-        self.folders.set_folders(mailboxes)
+    def set_accounts(self, account_names):
+        self.folders.set_accounts(account_names)
+
+    def set_folders(self, account, mailboxes):
+        self.folders.set_folders(account, mailboxes)
 
     def set_threads(self, threads):
         self.threads.set_threads(threads, 0, len(threads))

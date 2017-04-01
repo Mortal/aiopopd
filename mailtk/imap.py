@@ -9,6 +9,7 @@ from mailtk.data import Mailbox, ThreadInfo
 from imapclient import IMAPClient
 import email
 import imapclient
+from mailtk.util import decode_any_header
 
 
 def imap_unescape(v):
@@ -63,24 +64,27 @@ class ImapAccount:
         n_messages = await self.backend.select_folder(mailbox.name)
         if n_messages == 0:
             return []
-        messages = await self.backend.search()
+        message_ids = await self.backend.search()
         params = [
             'FLAGS', 'RFC822.SIZE',
             'BODY.PEEK[HEADER.FIELDS (Date From To Cc Subject ' +
             'Message-ID References In-Reply-To)]']
-        data = await self.backend.fetch(messages, params)
+        data = await self.backend.fetch(message_ids, params)
 
         def parse(message_key, message_value):
             message = next(v for k, v in message_value.items()
                            if k.startswith(b'BODY'))
             message = email.message_from_bytes(message)
-            info = ThreadInfo(message['To'],
-                              message['Subject'],
-                              message['Date'],
-                              'blurb')
+            info = ThreadInfo(
+                message['To'],
+                str(decode_any_header(message['Subject'])),
+                email.utils.parsedate_to_datetime(message['Date']),
+                'blurb')
             return (info, (mailbox, message_key))
 
-        return [parse(k, v) for k, v in data.items()]
+        messages = [parse(k, v) for k, v in data.items()]
+        messages.sort(key=lambda o: o[0].date, reverse=True)
+        return messages
 
     async def fetch_message(self, handle):
         mailbox, message_key = handle
