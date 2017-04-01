@@ -79,17 +79,18 @@ class ImapAccount:
             'Message-ID References In-Reply-To)]']
         data = await self.backend.fetch(message_ids, params)
 
-        def parse(message_key, message_value):
-            imap_flags = message_value[b'FLAGS']
+        def parse_flags(imap_flags):
             if b'\\Answered' in imap_flags:
-                flag = Flag.replied
+                return Flag.replied
             elif b'\\Seen' in imap_flags:
-                flag = Flag.read
+                return Flag.read
             elif b'\\Recent' in imap_flags:
-                flag = Flag.new
+                return Flag.new
             else:
-                flag = Flag.unread
-            flag = Flag.read
+                return Flag.unread
+
+        def parse(message_key, message_value):
+            flag = parse_flags(message_value[b'FLAGS'])
             size = message_value[b'RFC822.SIZE']
             message = next(v for k, v in message_value.items()
                            if k.startswith(b'BODY'))
