@@ -22,13 +22,7 @@ async def get_imap_config(loop: asyncio.BaseEventLoop):
         password = await run_pass(loop, pass_arg)
         ssl = not os.environ.get('MAILTK_INSECURE')
     except KeyError:
-        ## ./asimapd.py --test_mode --foreground --no_ssl
-        # with open('../asimap/test_mode/test_mode_addr.txt') as fp:
-        #     host, port = fp.read().strip().split(':')
-        # with open('../asimap/test_mode/test_mode_creds.txt') as fp:
-        #     user, password = fp.read().strip().split(':')
-
-        # Dovecot
+        # Dovecot on localhost
         with open('/etc/dovecot/passwd') as fp:
             user, password_tag, *rest = fp.readline().split(':')
         password = password_tag.replace('{PLAIN}', '')
@@ -50,22 +44,6 @@ async def get_imap(controller):
     await imap.backend.login(user, password)
     controller.log_debug('Logged in as %r' % (user,))
     return imap
-    # await imap.backend.login(user, password)
-    # mailboxes = await imap.list()
-    # controller.log_debug(repr(mailboxes))
-    # print(mailboxes)
-    # root.set_folders(mailboxes)
-    # if 'INBOX' not in mailboxes:
-    #     code, msgs = await imap.backend.create('INBOX')
-    #     controller.log_debug(repr((mailboxes, code, msgs)))
-
-
-# async def exceptions_to_message(root, coro):
-#     try:
-#         return await coro
-#     except Exception:
-#         import traceback
-#         root.message.set_value(traceback.format_exc())
 
 
 @wrapper
@@ -76,6 +54,4 @@ def main(loop: asyncio.BaseEventLoop):
     root.protocol('WM_DELETE_WINDOW', loop.stop)
     accounts = {'imap': get_imap}
     controller = Controller(loop, accounts, root)
-    # asyncio.ensure_future(
-    #     exceptions_to_message(root, imap_test(root, loop)), loop=loop)
     return root
