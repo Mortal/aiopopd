@@ -55,8 +55,8 @@ class _NamedTupleABCMeta(ABCMeta):
             inner_name = 'inner_%s' % base.__name__.lower()
             my_fields.insert(0, inner_name)
             for f in base_fields:
-                namespace[f] = property(
-                    operator.attrgetter('%s.%s' % (inner_name, f)))
+                namespace.setdefault(f, property(
+                    operator.attrgetter('%s.%s' % (inner_name, f))))
         if my_fields:
             basetuple = namedtuple(name, my_fields)
             bases = (basetuple,) + bases
