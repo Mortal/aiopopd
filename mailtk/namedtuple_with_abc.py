@@ -32,6 +32,7 @@ Simple usage example:
 For more advanced examples -- see below the "if __name__ == '__main__':".
 """
 
+import operator
 from collections import namedtuple
 from abc import ABCMeta, abstractproperty
 
@@ -41,13 +42,24 @@ __all__ = ('namedtuple',)
 class _NamedTupleABCMeta(ABCMeta):
     '''The metaclass for the abstract base class + mix-in for named tuples.'''
     def __new__(mcls, name, bases, namespace):
-        fields = namespace.get('_fields')
+        my_fields = namespace.get('_fields')
+        base_fields = None
         for base in bases:
-            if fields is not None:
+            base_fields = getattr(base, '_fields', None)
+            if base_fields is not None:
                 break
-            fields = getattr(base, '_fields', None)
-        if not isinstance(fields, abstractproperty):
-            basetuple = namedtuple(name, fields)
+        my_fields = list(namedtuple('_', my_fields or '')._fields)
+        if base_fields:
+            base_fields = list(namedtuple('_', base_fields)._fields)
+            base_fields.extend(k for k in dir(base)
+                               if isinstance(getattr(base, k), property))
+            inner_name = 'inner_%s' % base.__name__.lower()
+            my_fields.insert(0, inner_name)
+            for f in base_fields:
+                namespace[f] = property(
+                    operator.attrgetter('%s.%s' % (inner_name, f)))
+        if my_fields:
+            basetuple = namedtuple(name, my_fields)
             bases = (basetuple,) + bases
             namespace.pop('_fields', None)
             namespace.setdefault('__doc__', basetuple.__doc__)
@@ -57,7 +69,7 @@ class _NamedTupleABCMeta(ABCMeta):
 
 class _NamedTupleABC(metaclass=_NamedTupleABCMeta):
     '''The abstract base class + mix-in for named tuples.'''
-    _fields = abstractproperty()
+    pass
 
 
 namedtuple.abc = _NamedTupleABC
@@ -123,109 +135,19 @@ if __name__ == '__main__':
         def __str__(self):
             return '< {0!r}, ..., {0!r} >'.format(self.p, self.r)
 
-    rec33 = MyRecord33('foo', 'bar', 'baz')
+    rec33 = MyRecord33(MyRecord3('foo', 'bar', 'baz'))
     print(rec33)
     print(rec33._my_custom_method())
-    print(rec33._replace(q=222))
-    print(rec33._replace(q=222)._my_custom_method())
+    # print(rec33._replace(q=222))
+    # print(rec33._replace(q=222)._my_custom_method())
 
-    # ...and even override the magic '_fields' attribute again
+    # ...and even extend the magic '_fields' attribute again
 
     class MyRecord345(MyRecord3):
-        _fields = 'e f g h i j k'
+        _fields = 'h i j k'
 
-    rec345 = MyRecord345(1, 2, 3, 4, 3, 2, 1)
+    rec345 = MyRecord345(MyRecord3(1, 2, 3), 4, 3, 2, 1)
     print(rec345)
     print(rec345._my_custom_method())
-    print(rec345._replace(f=222))
-    print(rec345._replace(f=222)._my_custom_method())
-
-    # Mixing-in some other classes is also possible:
-
-    class MyMixIn(object):
-        def method(self):
-            return "MyMixIn.method() called"
-        def _my_custom_method(self):
-            return "MyMixIn._my_custom_method() called"
-        def count(self, item):
-            return "MyMixIn.count({0}) called".format(item)
-        def _asdict(self):  # (cannot override a namedtuple method, see below)
-            return "MyMixIn._asdict() called"
-
-    class MyRecord4(MyRecord33, MyMixIn):  # mix-in on the right
-        _fields = 'j k l x'
-
-    class MyRecord5(MyMixIn, MyRecord33):  # mix-in on the left
-        _fields = 'j k l x y'
-
-    rec4 = MyRecord4(1, 2, 3, 2)
-    print(rec4)
-    print(rec4.method())
-    print(rec4._my_custom_method())  # MyRecord33's
-    print(rec4.count(2))  # tuple's
-    print(rec4._replace(k=222))
-    print(rec4._replace(k=222).method())
-    print(rec4._replace(k=222)._my_custom_method())  # MyRecord33's
-    print(rec4._replace(k=222).count(8))  # tuple's
-
-    rec5 = MyRecord5(1, 2, 3, 2, 1)
-    print(rec5)
-    print(rec5.method())
-    print(rec5._my_custom_method())  # MyMixIn's
-    print(rec5.count(2))  # MyMixIn's
-    print(rec5._replace(k=222))
-    print(rec5._replace(k=222).method())
-    print(rec5._replace(k=222)._my_custom_method())  # MyMixIn's
-    print(rec5._replace(k=222).count(2))  # MyMixIn's
-
-    # None that behavior: the standard namedtuple methods cannot be
-    # overriden by a foreign mix-in -- even if the mix-in is declared
-    # as the leftmost base class (but, obviously, you can override them
-    # in the defined class or its subclasses):
-
-    print(rec4._asdict())  # (returns a dict, not "MyMixIn._asdict() called")
-    print(rec5._asdict())  # (returns a dict, not "MyMixIn._asdict() called")
-
-    class MyRecord6(MyRecord33):
-        _fields = 'j k l x y z'
-        def _asdict(self):
-            return "MyRecord6._asdict() called"
-    rec6 = MyRecord6(1, 2, 3, 1, 2, 3)
-    print(rec6._asdict())  # (this returns "MyRecord6._asdict() called")
-
-    # All that record classes are real subclasses of namedtuple.abc:
-
-    assert issubclass(MyRecord, namedtuple.abc)
-    assert issubclass(MyAbstractRecord, namedtuple.abc)
-    assert issubclass(AnotherAbstractRecord, namedtuple.abc)
-    assert issubclass(MyRecord2, namedtuple.abc)
-    assert issubclass(MyRecord3, namedtuple.abc)
-    assert issubclass(MyRecord33, namedtuple.abc)
-    assert issubclass(MyRecord345, namedtuple.abc)
-    assert issubclass(MyRecord4, namedtuple.abc)
-    assert issubclass(MyRecord5, namedtuple.abc)
-    assert issubclass(MyRecord6, namedtuple.abc)
-
-    # ...but abstract ones are not subclasses of tuple
-    # (and this is what you probably want):
-
-    assert not issubclass(MyAbstractRecord, tuple)
-    assert not issubclass(AnotherAbstractRecord, tuple)
-
-    assert issubclass(MyRecord, tuple)
-    assert issubclass(MyRecord2, tuple)
-    assert issubclass(MyRecord3, tuple)
-    assert issubclass(MyRecord33, tuple)
-    assert issubclass(MyRecord345, tuple)
-    assert issubclass(MyRecord4, tuple)
-    assert issubclass(MyRecord5, tuple)
-    assert issubclass(MyRecord6, tuple)
-
-    # Named tuple classes created with namedtuple() factory function
-    # (in the "traditional" way) are registered as "virtual" subclasses
-    # of namedtuple.abc:
-
-    MyTuple = namedtuple('MyTuple', 'a b c')
-    mt = MyTuple(1, 2, 3)
-    assert issubclass(MyTuple, namedtuple.abc)
-    assert isinstance(mt, namedtuple.abc)
+    print(rec345._replace(h=222))
+    print(rec345._replace(h=222)._my_custom_method())
