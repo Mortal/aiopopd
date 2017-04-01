@@ -1,10 +1,9 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 # Copyright (c) 2011 Jan Kaliszewski (zuo). Available under the MIT License.
 
 """
 namedtuple_with_abc.py:
 * named tuple mix-in + ABC (abstract base class) recipe,
-* works under Python 2.6, 2.7 as well as 3.x.
 
 Import this module to patch collections.namedtuple() factory function
 -- enriching it with the 'abc' attribute (an abstract base class + mix-in
