@@ -58,6 +58,7 @@ class Controller:
 
     async def _set_selected_thread(self, thread):
         self.log_debug(repr(thread))
+        self.log_debug('Fetching %r...' % (thread.subject,))
         message = await thread.account.fetch_message(thread.handle)
         self.gui.set_message(message)
         # mailbox, account = folder
