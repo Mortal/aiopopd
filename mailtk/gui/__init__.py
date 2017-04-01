@@ -1,76 +1,10 @@
 import traceback
 import tkinter
 import tkinter.ttk
-from aiotkinter import WidgetMixin
-from mailtk.data import ThreadInfo
 
-
-class Folders(tkinter.ttk.Treeview, WidgetMixin):
-    def __init__(self, parent):
-        super().__init__(parent)
-        self.heading('#0', text='Name')
-        self.bind_async('<Button-1>', self.button1)
-
-    async def button1(self, ev):
-        current = self.focus()
-        if not current:
-            return
-        data = self.item(current)
-        o = self._folder_map[current]
-        self.controller.set_selected_folder(o)
-
-    def set_folders(self, folders):
-        self._folder_map = {}
-        self.set_children('')
-        for o in folders:
-            v = self.insert('', tkinter.END, text=repr(o.name))
-            self._folder_map[v] = o
-            self.insert(v, 0, text='Test')
-
-
-class Threads(tkinter.ttk.Treeview, WidgetMixin):
-    thread_columns = ('recipients', 'subject', 'date', 'excerpt')
-
-    def __init__(self, parent):
-        super().__init__(parent, columns=self.thread_columns)
-        self.heading('#0', text='#')
-        for k in self.thread_columns:
-            self.heading(k, text=k[0].upper() + k[1:])
-        self.bind_async('<Button-1>', self.button1)
-        self._thread_map = None
-
-    async def button1(self, ev):
-        current = self.focus()
-        data = self.item(current)
-        o = self._thread_map[current]
-        self.controller.set_selected_thread(o)
-
-    def set_threads(self, threads, skip, total):
-        self._thread_map = {}
-        self.set_children('')
-        dummy = tuple('-' for _ in self.thread_columns)
-        for i in range(skip):
-            self.insert('', tkinter.END, text='%s' % i, values=dummy)
-        for i, o in enumerate(threads, skip):
-            values = tuple(getattr(o, k) for k in self.thread_columns)
-            v = self.insert('', tkinter.END, text='%s' % i, values=values)
-            self._thread_map[v] = o
-        for i in range(skip + len(threads), total):
-            self.insert('', tkinter.END, text='%s' % i, values=dummy)
-
-
-class Message(tkinter.Text, WidgetMixin):
-    def __init__(self, parent):
-        super().__init__(parent, state=tkinter.DISABLED)
-
-    def set_value(self, text):
-        self.configure(state=tkinter.NORMAL)
-        self.delete(1.0, tkinter.END)
-        self.insert(tkinter.END, text)
-        self.configure(state=tkinter.DISABLED)
-
-    def handle_exception(self):
-        raise
+from mailtk.gui.folders import Folders
+from mailtk.gui.threads import Threads
+from mailtk.gui.message import Message
 
 
 class MailGui(tkinter.Tk):
