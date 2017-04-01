@@ -6,4 +6,4 @@ class ThreadInfo(namedtuple.abc):
 
 
 class Mailbox(namedtuple.abc):
-    _fields = 'name delimiter flags'
+    _fields = 'name'

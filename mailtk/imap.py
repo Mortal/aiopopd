@@ -12,6 +12,14 @@ import imapclient
 from mailtk.util import decode_any_header
 
 
+class MailboxImap(Mailbox):
+    _fields = 'flags'
+
+
+class ThreadInfoImap(ThreadInfo):
+    _fields = 'mailbox message_key'
+
+
 def imap_unescape(v):
     if v.startswith('"'):
         mo = re.match(r'^"(?:[^"\\]|\\")*"$', v)
@@ -50,7 +58,7 @@ class ImapAccount:
 
     def parse_mailbox(self, response):
         flags, delimiter, name = response
-        return Mailbox(name, delimiter, flags)
+        return MailboxImap(Mailbox(name), flags)
 
     async def list_folders(self):
         response = await self.backend.list_folders()
@@ -61,6 +69,7 @@ class ImapAccount:
         return mailboxes
 
     async def list_messages(self, mailbox):
+        assert isinstance(mailbox, MailboxImap)
         n_messages = await self.backend.select_folder(mailbox.name)
         if n_messages == 0:
             return []
@@ -80,14 +89,16 @@ class ImapAccount:
                 str(decode_any_header(message['Subject'])),
                 email.utils.parsedate_to_datetime(message['Date']),
                 'blurb')
-            return (info, (mailbox, message_key))
+            return ThreadInfoImap(info, mailbox, message_key)
 
         messages = [parse(k, v) for k, v in data.items()]
         messages.sort(key=lambda o: o[0].date, reverse=True)
         return messages
 
-    async def fetch_message(self, handle):
-        mailbox, message_key = handle
+    async def fetch_message(self, threadinfo):
+        assert isinstance(threadinfo, ThreadInfoImap)
+        mailbox = threadinfo.mailbox
+        message_key = threadinfo.message_key
         # await self.backend.select_folder(mailbox.name)
         params = ['RFC822']
         data, = (await self.backend.fetch([message_key], params)).values()
