@@ -32,13 +32,12 @@ Simple usage example:
 For more advanced examples -- see below the "if __name__ == '__main__':".
 """
 
-import collections
+from collections import namedtuple
 from abc import ABCMeta, abstractproperty
 from functools import wraps
 from sys import version_info
 
 __all__ = ('namedtuple',)
-_namedtuple = collections.namedtuple
 
 
 class _NamedTupleABCMeta(ABCMeta):
@@ -50,7 +49,7 @@ class _NamedTupleABCMeta(ABCMeta):
                 break
             fields = getattr(base, '_fields', None)
         if not isinstance(fields, abstractproperty):
-            basetuple = _namedtuple(name, fields)
+            basetuple = namedtuple(name, fields)
             bases = (basetuple,) + bases
             namespace.pop('_fields', None)
             namespace.setdefault('__doc__', basetuple.__doc__)
@@ -63,19 +62,7 @@ class _NamedTupleABC(metaclass=_NamedTupleABCMeta):
     _fields = abstractproperty()
 
 
-_namedtuple.abc = _NamedTupleABC
-#_NamedTupleABC.register(type(version_info))  # (and similar, in the future...)
-
-@wraps(_namedtuple)
-def namedtuple(*args, **kwargs):
-    '''Named tuple factory with namedtuple.abc subclass registration.'''
-    cls = _namedtuple(*args, **kwargs)
-    _NamedTupleABC.register(cls)
-    return cls
-
-collections.namedtuple = namedtuple
-
-
+namedtuple.abc = _NamedTupleABC
 
 
 if __name__ == '__main__':
