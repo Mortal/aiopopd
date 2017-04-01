@@ -34,8 +34,6 @@ For more advanced examples -- see below the "if __name__ == '__main__':".
 
 from collections import namedtuple
 from abc import ABCMeta, abstractproperty
-from functools import wraps
-from sys import version_info
 
 __all__ = ('namedtuple',)
 
