@@ -4,7 +4,7 @@ import queue
 import asyncio
 import threading
 
-from mailtk.data import Mailbox, ThreadInfo
+from mailtk.data import Mailbox, ThreadInfo, Flag
 
 from imapclient import IMAPClient
 import email
@@ -81,14 +81,28 @@ class ImapAccount:
         data = await self.backend.fetch(message_ids, params)
 
         def parse(message_key, message_value):
+            imap_flags = message_value[b'FLAGS']
+            if b'\\Answered' in imap_flags:
+                flag = Flag.replied
+            elif b'\\Seen' in imap_flags:
+                flag = Flag.read
+            elif b'\\Recent' in imap_flags:
+                flag = Flag.new
+            else:
+                flag = Flag.unread
+            flag = Flag.read
+            size = message_value[b'RFC822.SIZE']
             message = next(v for k, v in message_value.items()
                            if k.startswith(b'BODY'))
             message = email.message_from_bytes(message)
             info = ThreadInfo(
-                message['To'],
-                str(decode_any_header(message['Subject'])),
-                email.utils.parsedate_to_datetime(message['Date']),
-                'blurb')
+                recipients=message['To'],
+                subject=str(decode_any_header(message['Subject'])),
+                date=email.utils.parsedate_to_datetime(message['Date']),
+                excerpt='blurb',
+                flag=flag,
+                size=size,
+            )
             return ThreadInfoImap(info, mailbox, message_key)
 
         messages = [parse(k, v) for k, v in data.items()]

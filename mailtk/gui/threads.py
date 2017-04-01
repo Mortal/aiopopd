@@ -3,7 +3,7 @@ from mailtk.gui.mixin import WidgetMixin
 
 
 class Threads(tkinter.ttk.Frame, WidgetMixin):
-    thread_columns = ('recipients', 'subject', 'date', 'excerpt')
+    thread_columns = ('recipients', 'flag', 'size', 'date', 'excerpt')
 
     def __init__(self, parent):
         super().__init__(parent)
@@ -12,7 +12,7 @@ class Threads(tkinter.ttk.Frame, WidgetMixin):
                                        style='Threads.Treeview',
                                        yscrollcommand=self.scrollbar)
         self.scrollbar.config(command=self.tv.yview)
-        self.tv.heading('#0', text='#')
+        self.tv.heading('#0', text='Subject')
         for k in self.thread_columns:
             self.tv.heading(k, text=k[0].upper() + k[1:])
         self.bind_async(self.tv, '<<TreeviewSelect>>', self.treeview_select)
@@ -46,7 +46,7 @@ class Threads(tkinter.ttk.Frame, WidgetMixin):
             self.tv.insert('', tkinter.END, text='%s' % i, values=dummy)
         for i, o in enumerate(threads, skip):
             values = tuple(getattr(o, k) for k in self.thread_columns)
-            v = self.tv.insert('', tkinter.END, text='%s' % i, values=values)
+            v = self.tv.insert('', tkinter.END, text=o.subject, values=values)
             self._thread_map[v] = o
         for i in range(skip + len(threads), total):
             self.tv.insert('', tkinter.END, text='%s' % i, values=dummy)

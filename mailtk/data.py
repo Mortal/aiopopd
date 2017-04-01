@@ -9,11 +9,20 @@ MailboxImap.
 '''
 
 
+from enum import Enum
 from mailtk.namedtuple_with_abc import namedtuple
 
 
+class Flag(Enum):
+    read = 'read'
+    unread = 'unread'
+    new = 'new'
+    replied = 'replied'
+    forwarded = 'forwarded'
+
+
 class ThreadInfo(namedtuple.abc):
-    _fields = 'recipients subject date excerpt'
+    _fields = 'recipients subject date excerpt flag size'
 
 
 class Mailbox(namedtuple.abc):
