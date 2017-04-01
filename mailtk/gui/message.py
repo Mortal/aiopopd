@@ -12,7 +12,7 @@ class Message(tkinter.Frame, WidgetMixin):
         super().__init__(parent)
         self.scrollbar = tkinter.ttk.Scrollbar(self, orient=tkinter.VERTICAL)
         self.txt = tkinter.Text(self, state=tkinter.DISABLED,
-                                yscrollcommand=self.scrollbar)
+                                yscrollcommand=self.scrollbar.set)
         self.txt.configure(**self.style.configure('Message.Text'))
         self.scrollbar.config(command=self.txt.yview)
 

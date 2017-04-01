@@ -10,7 +10,7 @@ class Threads(tkinter.ttk.Frame, WidgetMixin):
         self.scrollbar = tkinter.ttk.Scrollbar(self, orient=tkinter.VERTICAL)
         self.tv = tkinter.ttk.Treeview(self, columns=self.thread_columns,
                                        style='Threads.Treeview',
-                                       yscrollcommand=self.scrollbar)
+                                       yscrollcommand=self.scrollbar.set)
         self.scrollbar.config(command=self.tv.yview)
         self.tv.heading('#0', text='Subject')
         for k in self.thread_columns:
