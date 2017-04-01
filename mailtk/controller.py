@@ -22,7 +22,7 @@ class Controller:
         self.accounts = accounts
         self.gui = gui
         self.gui.controller = self
-        self.ensure_future(self.init_accounts())
+        self.init_accounts_result = self.ensure_future(self.init_accounts())
         self.pending_interaction = None
 
     def ensure_future(self, coro):
@@ -36,24 +36,38 @@ class Controller:
 
     async def init_accounts(self):
         self.gui.set_accounts(self.accounts.keys())
+        account_coros = []
         for k, v in self.accounts.items():
-            self.ensure_future(self.init_account(k, v))
+            account_coros.append(self.init_account(k, v))
+        await asyncio.gather(*account_coros, loop=self.loop,
+                             return_exceptions=True)
 
     async def init_account(self, account_name, get_account):
         try:
             account = await get_account(self)
-        except Exception as exn:
-            self.log_debug("Failed to connect to %r: %r" % (account_name, exn))
+        except Exception:
+            self.log_exception("Failed to connect to %r" %
+                               (account_name,))
             return
-        mailboxes = await account.list_folders()
-        self.log_debug(repr(mailboxes))
-        assert all(isinstance(f, Mailbox) for f in mailboxes)
-        folders = [MailboxAccount(f, account) for f in mailboxes]
-        self.gui.set_folders(account_name, folders)
-        self.folders = folders
+        try:
+            mailboxes = await account.list_folders()
+            self.log_debug(repr(mailboxes))
+            assert all(isinstance(f, Mailbox) for f in mailboxes)
+            folders = [MailboxAccount(f, account) for f in mailboxes]
+            self.gui.set_folders(account_name, folders)
+            self.folders = folders
+        except Exception:
+            self.log_exception('Failed to initialize account %r' %
+                               (account_name,))
 
     def handle_exception(self):
-        self.log_debug(traceback.format_exc())
+        self.log_exception('Unhandled exception caught by mailtk.Controller')
+
+    def log_exception(self, msg):
+        s = traceback.format_exc()
+        if msg:
+            s = '\n\n'.join((msg, traceback.format_exc()))
+        self.log_debug(s)
 
     def log_debug(self, msg):
         self.gui.log_debug(msg)
