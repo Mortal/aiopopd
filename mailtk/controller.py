@@ -48,9 +48,9 @@ class Controller:
     def status(text):
         def decorator(method):
             @functools.wraps(method)
-            def wrapper(self, *args, **kwargs):
+            async def wrapper(self, *args, **kwargs):
                 with self.set_status(text):
-                    return method(self, *args, **kwargs)
+                    return await method(self, *args, **kwargs)
 
             return wrapper
 
