@@ -99,6 +99,7 @@ class Controller:
         s = traceback.format_exc()
         if msg:
             s = '\n\n'.join((msg, traceback.format_exc()))
+        print(s)
         self.log_debug(s)
 
     def log_debug(self, msg):

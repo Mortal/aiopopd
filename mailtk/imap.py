@@ -35,6 +35,13 @@ def imap_unescape(v):
 
 
 class ImapAccount:
+    @classmethod
+    async def initialize(cls, loop, host, port, username, password, ssl=False):
+        imap = cls(loop, host, int(port), bool(ssl))
+        await imap.connect()
+        await imap.backend.login(username, password)
+        return imap
+
     def __init__(self, loop, host, port, ssl):
         self.backend = ImapBackend(loop, host, port, ssl)
 
@@ -43,13 +50,6 @@ class ImapAccount:
 
     async def disconnect(self):
         await self.backend.disconnect()
-
-    async def __aenter__(self):
-        await self.connect()
-        return self
-
-    async def __aexit__(self, exc_type, exc, tb):
-        await self.disconnect()
 
     async def capabilities(self):
         return await self.backend.capabilities()
