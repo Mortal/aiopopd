@@ -37,6 +37,7 @@ def imap_unescape(v):
 class ImapAccount:
     @classmethod
     async def initialize(cls, loop, host, port, username, password, ssl=False):
+        # TODO: STARTTLS support?
         imap = cls(loop, host, int(port), bool(ssl))
         await imap.connect()
         await imap.backend.login(username, password)
