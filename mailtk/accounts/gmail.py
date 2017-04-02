@@ -1,6 +1,14 @@
 import os
+import queue
+import base64
+import pprint
+import quopri
+import asyncio
+import httplib2
+import threading
+import email.message
 
-from mailtk.data import Mailbox
+from mailtk.data import ThreadInfo, Mailbox
 
 from apiclient import discovery
 from oauth2client import client
@@ -10,11 +18,6 @@ from oauth2client.file import Storage
 
 # If modifying these scopes, delete your previously saved credentials
 # at ~/.credentials/gmail-python-quickstart.json
-from mailtk.data import ThreadInfo
-import queue
-import threading
-import asyncio
-import httplib2
 SCOPES = 'https://www.googleapis.com/auth/gmail.readonly'
 CLIENT_SECRET_FILE = os.path.join(
     os.path.dirname(os.path.abspath(__file__)), 'client_secret.json')
@@ -173,3 +176,40 @@ class GmailAccount:
                 excerpt=data['snippet'])
             threads.append(ThreadInfoGmail(thread_info, data))
         return threads
+
+    @rpc
+    def fetch_message(self, service, threadinfo: ThreadInfoGmail):
+        thread = threadinfo.data
+        backend = service.users().threads().get(
+            userId='me',
+            id=thread['id'],
+            format='full'
+        ).execute()
+        return construct_gmail_message(backend['messages'][0]['payload'])
+
+
+def construct_gmail_message(payload):
+    message = email.message.Message()
+    for header in payload['headers']:
+        message[header['name']] = header['value']
+    if message.get_content_maintype() == 'multipart':
+        message.set_payload(
+            [construct_gmail_message(part)
+             for part in payload['parts']])
+    else:
+        cte = message.get('Content-Transfer-Encoding')
+        if cte is not None:
+            del message['Content-Transfer-Encoding']
+            message['X-Original-Content-Transfer-Encoding'] = cte
+        try:
+            external_id = payload['body']['attachmentId']
+            ct = message.get_content_type()
+            message.replace_header('Content-Type', 'text/plain')
+            message.set_payload(
+                'Attachment with type %s, ID %r omitted; retrieve separately' %
+                (ct, external_id))
+        except KeyError:
+            body = payload['body']['data']
+            body += '=' * (4 - len(body) % 4)
+            message.set_payload(base64.urlsafe_b64decode(body))
+    return message
