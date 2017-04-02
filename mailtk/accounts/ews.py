@@ -1,5 +1,6 @@
 import os
 import queue
+import base64
 import asyncio
 import threading
 import exchangelib
@@ -10,6 +11,9 @@ from mailtk.data import Flag
 
 class MailboxExchange(Mailbox):
     _fields = 'folder'
+
+class ThreadInfoExchange(ThreadInfo):
+    _fields = 'folder message_id'
 
 
 class ExchangeAccount:
@@ -84,15 +88,31 @@ class ExchangeAccount:
         f = folder.folder  # type: exchangelib.folders.Messages
         messages = []
         qs = f.all()
-        qs = qs.values_list('datetime_received', 'sender', 'subject')
+        qs = qs.values('message_id', 'datetime_received', 'sender', 'subject')
         qs = qs[:20]
-        for dt, sender, subject in qs:
-            messages.append(ThreadInfo(
+        for o in qs:
+            try:
+                message_id = o.pop('message_id')
+                dt = o.pop('datetime_received')
+                sender = o.pop('sender')
+                subject = o.pop('subject')
+            except KeyError:
+                raise Exception(o)
+            thread_info = ThreadInfo(
                 flag=Flag.read, size=42, date=dt,
                 subject=subject, sender=sender,
                 recipients=[],
-                children=[], excerpt='foo'))
+                children=[], excerpt='foo')
+            messages.append(ThreadInfoExchange(thread_info, folder, message_id))
         return messages
+
+    @rpc
+    def fetch_message(self, account, threadinfo: ThreadInfoExchange):
+        folder = threadinfo.folder
+        message_id = threadinfo.message_id
+        qs = folder.folder.filter(message_id=message_id)
+        o, = qs
+        return base64.b64decode(o.mime_content)
 
     del rpc
 
