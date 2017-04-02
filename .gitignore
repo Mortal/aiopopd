@@ -1,3 +1,6 @@
 __pycache__
 .*.swp
 *.egg-info
+/accounts.ini
+/mailtk/accounts/client_secret.json
+/venv*
