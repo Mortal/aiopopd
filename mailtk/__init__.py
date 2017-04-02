@@ -3,7 +3,7 @@ from concurrent.futures import ThreadPoolExecutor
 from aiotkinter import wrapper
 from mailtk.gui import MailGui
 from mailtk.controller import Controller
-from mailtk.accounts import get_accounts
+from mailtk.accounts.config import get_accounts
 
 
 @wrapper
