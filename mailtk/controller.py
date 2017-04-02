@@ -4,6 +4,7 @@ import traceback
 import pprint
 import contextlib
 import functools
+import email
 
 
 class ThreadAccount(ThreadInfo):
@@ -144,6 +145,8 @@ class Controller:
             except asyncio.CancelledError:
                 print("Cancelled set_selected_thread")
                 return
+        if isinstance(message, bytes):
+            message = email.message_from_bytes(message)
         self.gui.set_message(message)
         # TODO: Set flag to Flag.read
 

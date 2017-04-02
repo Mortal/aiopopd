@@ -23,10 +23,9 @@ class Message(tkinter.Frame, WidgetMixin):
         self.columnconfigure(0, weight=1)
         self.rowconfigure(0, weight=1)
 
-    def set_message(self, message_source):
-        if message_source is None:
+    def set_message(self, message):
+        if message is None:
             return self.set_value('')
-        message = email.message_from_bytes(message_source)
         headers = [
             '%s: %s' % (k, str(decode_any_header(v)))
             for k in self.HEADERS

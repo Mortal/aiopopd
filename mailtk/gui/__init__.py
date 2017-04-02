@@ -1,3 +1,4 @@
+import email.message
 import traceback
 import tkinter
 import tkinter.ttk
@@ -53,5 +54,5 @@ class MailGui(tkinter.Tk):
     def log_debug(self, msg):
         self.message.set_value(msg)
 
-    def set_message(self, message: bytes):
+    def set_message(self, message: email.message.Message):
         self.message.set_message(message)
