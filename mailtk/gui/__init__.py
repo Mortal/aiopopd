@@ -16,16 +16,23 @@ class MailGui(tkinter.Tk):
         self.controller = None
         self.title('MailTk')
         self.hpane = tkinter.ttk.Panedwindow(self, orient='horizontal')
-        self.hpane.pack(fill='both', expand=True)
+        self.hpane.grid(row=0, column=0)
+        self.rowconfigure(0, weight=1)
         self.folders = Folders(self)
         self.vpane = tkinter.ttk.Panedwindow(self, orient='vertical')
-        self.vpane.pack(fill='both', expand=True)
+        # self.vpane.pack(fill='both', expand=True)
         self.threads = Threads(self)
         self.message = Message(self)
         self.hpane.add(self.folders, weight=1)
         self.vpane.add(self.threads, weight=1)
         self.vpane.add(self.message, weight=1)
         self.hpane.add(self.vpane, weight=1)
+        self.statusbar = tkinter.ttk.Label(
+            self, borderwidth=1, relief=tkinter.SUNKEN, anchor='w')
+        self.statusbar.grid(row=1, column=0, sticky='news')
+
+    def set_status(self, text):
+        self.statusbar.configure(text=text)
 
     def selected_folder(self):
         return self.folders.selected_folder()

@@ -2,6 +2,8 @@ import asyncio
 from mailtk.data import Mailbox, ThreadInfo
 import traceback
 import pprint
+import contextlib
+import functools
 
 
 class ThreadAccount(ThreadInfo):
@@ -28,8 +30,31 @@ class Controller:
         self.accounts = accounts
         self.gui = gui
         self.gui.controller = self
+        self.statuses = []
         self.init_accounts_result = self.ensure_future(self.init_accounts())
         self.pending_interaction = None
+
+    @contextlib.contextmanager
+    def set_status(self, text):
+        contextlib.ContextDecorator
+        self.statuses.append(text)
+        self.gui.set_status(' '.join(self.statuses))
+        try:
+            yield
+        finally:
+            self.statuses.remove(text)
+            self.gui.set_status(' '.join(self.statuses))
+
+    def status(text):
+        def decorator(method):
+            @functools.wraps(method)
+            def wrapper(self, *args, **kwargs):
+                with self.set_status(text):
+                    return method(self, *args, **kwargs)
+
+            return wrapper
+
+        return decorator
 
     def ensure_future(self, coro):
         async def wrapper():
@@ -40,6 +65,7 @@ class Controller:
 
         return asyncio.ensure_future(wrapper(), loop=self.loop)
 
+    @status('Initializing accounts...')
     async def init_accounts(self):
         self.gui.set_accounts(self.accounts.keys())
         account_coros = []
@@ -89,11 +115,12 @@ class Controller:
 
     async def _set_selected_folder(self, folder):
         mailbox, account = folder
-        try:
-            result = await account.list_messages(mailbox)
-        except asyncio.CancelledError:
-            print("Cancelled set_selected_folder")
-            return
+        with self.set_status('Opening %s in %s...' % (mailbox.name, account)):
+            try:
+                result = await account.list_messages(mailbox)
+            except asyncio.CancelledError:
+                print("Cancelled set_selected_folder")
+                return
         result = [ThreadAccount(thread, account)
                   for thread in result]
         self.gui.set_threads(result)
@@ -105,11 +132,14 @@ class Controller:
 
     async def _set_selected_thread(self, thread):
         self.log_debug(repr(thread))
-        self.log_debug('Fetching %r...' % (thread.subject,))
-        try:
-            message = await thread.account.fetch_message(thread.inner_threadinfo)
-        except asyncio.CancelledError:
-            print("Cancelled set_selected_thread")
-            return
+        with self.set_status('Fetching %r...' % (thread.subject,)):
+            try:
+                message = await thread.account.fetch_message(
+                    thread.inner_threadinfo)
+            except asyncio.CancelledError:
+                print("Cancelled set_selected_thread")
+                return
         self.gui.set_message(message)
         # TODO: Set flag to Flag.read
+
+    del status
