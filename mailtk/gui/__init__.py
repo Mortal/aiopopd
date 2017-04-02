@@ -16,8 +16,9 @@ class MailGui(tkinter.Tk):
         self.controller = None
         self.title('MailTk')
         self.hpane = tkinter.ttk.Panedwindow(self, orient='horizontal')
-        self.hpane.grid(row=0, column=0)
+        self.hpane.grid(row=0, column=0, sticky='news')
         self.rowconfigure(0, weight=1)
+        self.columnconfigure(0, weight=1)
         self.folders = Folders(self)
         self.vpane = tkinter.ttk.Panedwindow(self, orient='vertical')
         # self.vpane.pack(fill='both', expand=True)
