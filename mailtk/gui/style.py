@@ -1,4 +1,5 @@
 import tkinter.ttk
+import tkinter
 
 
 class Style(tkinter.ttk.Style):
@@ -10,3 +11,5 @@ class Style(tkinter.ttk.Style):
         self.configure('Treeview.Heading', font=('Helvetica', font_size))
         # self.configure('Folders.Treeview', font=('Helvetica', font_size))
         self.configure('Message.Text', font=('Courier', font_size))
+        self.configure('Statusbar.TLabel', pady=3, border=1, relief=tkinter.SUNKEN,
+                       font=('Helvetica', font_size))

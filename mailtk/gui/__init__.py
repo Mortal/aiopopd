@@ -28,8 +28,8 @@ class MailGui(tkinter.Tk):
         self.vpane.add(self.threads, weight=1)
         self.vpane.add(self.message, weight=1)
         self.hpane.add(self.vpane, weight=1)
-        self.statusbar = tkinter.ttk.Label(
-            self, borderwidth=1, relief=tkinter.SUNKEN, anchor='w')
+        self.statusbar = tkinter.ttk.Label(self, anchor='w',
+                                           style='Statusbar.TLabel')
         self.statusbar.grid(row=1, column=0, sticky='news')
 
     def set_status(self, text):
