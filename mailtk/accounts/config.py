@@ -22,11 +22,13 @@ def get_account(fields):
     module_name, sep, class_name = fields.pop('class').rpartition('.')
     module = importlib.import_module(module_name)
     class_ = getattr(module, class_name)
-    password_spec = fields.pop('password')
+    password_spec = fields.pop('password', None)
 
     async def initialize(controller):
-        password = await get_password_from_spec(controller.loop, password_spec)
-        fields['password'] = password
+        if password_spec is not None:
+            password = await get_password_from_spec(
+                controller.loop, password_spec)
+            fields['password'] = password
         return await class_.initialize(controller.loop, **fields)
 
     return initialize
