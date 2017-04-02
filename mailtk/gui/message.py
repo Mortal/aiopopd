@@ -3,6 +3,7 @@ from mailtk.gui.mixin import WidgetMixin
 from mailtk.gui.autoscrollbar import AutoScrollbar
 import email
 from mailtk.util import decode_any_header
+from mailtk.gui.bmp import bmp_call
 
 
 class Message(tkinter.Frame, WidgetMixin):
@@ -50,7 +51,7 @@ class Message(tkinter.Frame, WidgetMixin):
     def set_value(self, text):
         self.txt.configure(state=tkinter.NORMAL)
         self.txt.delete(1.0, tkinter.END)
-        self.txt.insert(tkinter.END, text)
+        bmp_call(self.txt.insert, tkinter.END, text)
         self.txt.configure(state=tkinter.DISABLED)
 
     def handle_exception(self):

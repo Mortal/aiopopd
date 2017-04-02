@@ -1,6 +1,7 @@
 import tkinter.ttk
 from mailtk.gui.autoscrollbar import AutoScrollbar
 from mailtk.gui.mixin import WidgetMixin
+from mailtk.gui.bmp import bmp_call
 
 
 class Threads(tkinter.ttk.Frame, WidgetMixin):
@@ -42,8 +43,9 @@ class Threads(tkinter.ttk.Frame, WidgetMixin):
     def _insert_children(self, threads, parent):
         for o in threads:
             values = tuple(getattr(o, k) or '' for k in self.thread_columns)
-            v = self.tv.insert(parent, tkinter.END, text=o.subject or '',
-                               values=values)
+            v = bmp_call(self.tv.insert,
+                         parent, tkinter.END, text=o.subject or '',
+                         values=values)
             self._thread_map[v] = o
             self._insert_children(o.children, v)
             if o.children:
