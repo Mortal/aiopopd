@@ -41,8 +41,8 @@ class Threads(tkinter.ttk.Frame, WidgetMixin):
 
     def _insert_children(self, threads, parent):
         for o in threads:
-            values = tuple(getattr(o, k) for k in self.thread_columns)
-            v = self.tv.insert(parent, tkinter.END, text=o.subject,
+            values = tuple(getattr(o, k) or '' for k in self.thread_columns)
+            v = self.tv.insert(parent, tkinter.END, text=o.subject or '',
                                values=values)
             self._thread_map[v] = o
             self._insert_children(o.children, v)
