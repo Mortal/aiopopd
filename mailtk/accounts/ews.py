@@ -100,14 +100,20 @@ class ExchangeAccount:
     def _run(self):
         # Run commands in thread
         try:
-            config = exchangelib.Configuration(
-                server=self._host,
-                credentials=self._credentials,
-                auth_type=exchangelib.NTLM,
-            )
-            account = exchangelib.Account(
-                primary_smtp_address=self._email, config=config,
-                access_type=exchangelib.DELEGATE)
+            if self._host == 'auto':
+                account = exchangelib.Account(
+                    primary_smtp_address=self._email,
+                    credentials=self._credentials,
+                    autodiscover=True, access_type=exchangelib.DELEGATE)
+            else:
+                config = exchangelib.Configuration(
+                    server=self._host,
+                    credentials=self._credentials,
+                    auth_type=exchangelib.NTLM,
+                )
+                account = exchangelib.Account(
+                    primary_smtp_address=self._email, config=config,
+                    access_type=exchangelib.DELEGATE)
         except Exception as exn:
             future, method, args = self._command_queue.get()
             self._response_queue.put((future, exn))
