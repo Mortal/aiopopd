@@ -34,7 +34,6 @@ class ExchangeAccount:
         self._response_queue = queue.Queue()
         self._ready_r, self._ready_w = os.pipe()
         loop.add_reader(self._ready_r, self._ready)
-        self._ready = threading.Event()
         self._thread = threading.Thread(None, self._run)
         self._breaking = False
 
