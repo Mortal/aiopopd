@@ -13,12 +13,12 @@ class Folders(tkinter.ttk.Treeview, WidgetMixin):
     async def treeview_select(self, ev):
         current = self.focus()
         try:
-            account, o = self._folder_map[current]
+            o = self._folder_map[current]
         except KeyError:
             # Clicked something else
             return
         data = self.item(current)
-        self.controller.set_selected_folder(account, o)
+        self.controller.set_selected_folder(o)
 
     async def treeview_open(self, ev):
         pass
@@ -38,7 +38,11 @@ class Folders(tkinter.ttk.Treeview, WidgetMixin):
     def set_folders(self, account_name, folders):
         account = self._account_map[account_name]
         self.set_children(account)
-        for o in folders:
-            v = self.insert(account, tkinter.END, text=o.name)
-            self._folder_map[v] = (account, o)
+        self.add_folders(account, folders)
         self.item(account, open=True)
+
+    def add_folders(self, item, folders):
+        for o in folders:
+            v = self.insert(item, tkinter.END, text=o.name)
+            self._folder_map[v] = o
+            self.add_folders(v, o.children)

@@ -27,4 +27,4 @@ class ThreadInfo(namedtuple.abc):
 
 
 class Mailbox(namedtuple.abc):
-    _fields = 'name'
+    _fields = 'name children'

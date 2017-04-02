@@ -12,8 +12,14 @@ class ThreadAccount(ThreadInfo):
         return [ThreadAccount(c, self.account)
                 for c in self.inner_threadinfo.children]
 
+
 class MailboxAccount(Mailbox):
     _fields = 'account'
+
+    @property
+    def children(self):
+        return [MailboxAccount(c, self.account)
+                for c in self.inner_mailbox.children]
 
 
 class Controller:
@@ -41,6 +47,7 @@ class Controller:
             account_coros.append(self.init_account(k, v))
         await asyncio.gather(*account_coros, loop=self.loop,
                              return_exceptions=True)
+        self.log_debug('Finished initializing accounts')
 
     async def init_account(self, account_name, get_account):
         try:
@@ -51,7 +58,6 @@ class Controller:
             return
         try:
             mailboxes = await account.list_folders()
-            self.log_debug(repr(mailboxes))
             assert all(isinstance(f, Mailbox) for f in mailboxes)
             folders = [MailboxAccount(f, account) for f in mailboxes]
             self.gui.set_folders(account_name, folders)
@@ -77,16 +83,22 @@ class Controller:
             self.pending_interaction.cancel()
         self.pending_interaction = self.ensure_future(coro)
 
-    def set_selected_folder(self, account, folder):
-        self.set_interaction(self._set_selected_folder(account, folder))
+    def set_selected_folder(self, folder):
+        self.log_debug("Selected folder: %r" % (folder,))
+        self.set_interaction(self._set_selected_folder(folder))
 
-    async def _set_selected_folder(self, account_name, folder):
+    async def _set_selected_folder(self, folder):
         mailbox, account = folder
-        result = await account.list_messages(mailbox)
+        try:
+            result = await account.list_messages(mailbox)
+        except asyncio.CancelledError:
+            print("Cancelled set_selected_folder")
+            return
         result = [ThreadAccount(thread, account)
                   for thread in result]
         self.gui.set_threads(result)
         self.gui.set_message(None)
+        self.log_debug("Selected folder: %r" % (folder,))
 
     def set_selected_thread(self, thread):
         self.set_interaction(self._set_selected_thread(thread))
@@ -94,8 +106,10 @@ class Controller:
     async def _set_selected_thread(self, thread):
         self.log_debug(repr(thread))
         self.log_debug('Fetching %r...' % (thread.subject,))
-        message = await thread.account.fetch_message(thread.inner_threadinfo)
+        try:
+            message = await thread.account.fetch_message(thread.inner_threadinfo)
+        except asyncio.CancelledError:
+            print("Cancelled set_selected_thread")
+            return
         self.gui.set_message(message)
-        # mailbox, account = folder
-        # result = await account.list_messages(mailbox)
-        # self.gui.set_threads(result)
+        # TODO: Set flag to Flag.read
