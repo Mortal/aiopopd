@@ -1,10 +1,15 @@
-import exchangelib
-import queue
 import os
+import queue
 import asyncio
-from mailtk.data import Mailbox
 import threading
 import exchangelib
+from mailtk.data import Mailbox
+from mailtk.data import ThreadInfo
+from mailtk.data import Flag
+
+
+class MailboxExchange(Mailbox):
+    _fields = 'folder'
 
 
 class ExchangeAccount:
@@ -68,11 +73,27 @@ class ExchangeAccount:
                         if f.child_folder_count else ())
             child_mailboxes = [make_mailbox(c) for c in children
                                if isinstance(c, exchangelib.folders.Messages)]
-            return Mailbox(f.name, child_mailboxes)
+            return MailboxExchange(
+                Mailbox(f.name, child_mailboxes), f)
 
         folders = top.get_folders(depth=exchangelib.SHALLOW)
         return [make_mailbox(c) for c in folders
                 if isinstance(c, exchangelib.folders.Messages)]
+
+    @rpc
+    def list_messages(self, account, folder: MailboxExchange):
+        f = folder.folder  # type: exchangelib.folders.Messages
+        messages = []
+        qs = f.all()
+        qs = qs.values_list('datetime_received', 'sender', 'subject')
+        qs = qs[:20]
+        for dt, sender, subject in qs:
+            messages.append(ThreadInfo(
+                flag=Flag.read, size=42, date=dt,
+                subject=subject, sender=sender,
+                recipients=[],
+                children=[], excerpt='foo'))
+        return messages
 
     del rpc
 
