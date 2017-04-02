@@ -16,11 +16,11 @@ class ThreadAccount(ThreadInfo):
 
 
 class MailboxAccount(Mailbox):
-    _fields = 'account'
+    _fields = 'account account_name'
 
     @property
     def children(self):
-        return [MailboxAccount(c, self.account)
+        return [MailboxAccount(c, self.account, self.account_name)
                 for c in self.inner_mailbox.children]
 
 
@@ -77,15 +77,18 @@ class Controller:
 
     async def init_account(self, account_name, get_account):
         try:
-            account = await get_account(self)
+            with self.set_status('Login %s...' % account_name):
+                account = await get_account(self)
         except Exception:
             self.log_exception("Failed to connect to %r" %
                                (account_name,))
             return
         try:
-            mailboxes = await account.list_folders()
+            with self.set_status('List %s...' % account_name):
+                mailboxes = await account.list_folders()
             assert all(isinstance(f, Mailbox) for f in mailboxes)
-            folders = [MailboxAccount(f, account) for f in mailboxes]
+            folders = [MailboxAccount(f, account, account_name)
+                       for f in mailboxes]
             self.gui.set_folders(account_name, folders)
             self.folders = folders
         except Exception:
@@ -115,14 +118,15 @@ class Controller:
         self.set_interaction(self._set_selected_folder(folder))
 
     async def _set_selected_folder(self, folder):
-        mailbox, account = folder
-        with self.set_status('Opening %s in %s...' % (mailbox.name, account)):
+        mailbox = folder.inner_mailbox
+        with self.set_status('Opening %s in %s...' %
+                             (mailbox.name, folder.account_name)):
             try:
-                result = await account.list_messages(mailbox)
+                result = await folder.account.list_messages(mailbox)
             except asyncio.CancelledError:
                 print("Cancelled set_selected_folder")
                 return
-        result = [ThreadAccount(thread, account)
+        result = [ThreadAccount(thread, folder.account)
                   for thread in result]
         self.gui.set_threads(result)
         self.gui.set_message(None)
