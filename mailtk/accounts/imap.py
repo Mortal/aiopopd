@@ -10,6 +10,7 @@ from imapclient import IMAPClient
 import email
 import imapclient
 from mailtk.util import decode_any_header
+from mailtk.accounts.base import AccountBase
 
 
 class ThreadMessage(namedtuple.abc):
@@ -34,7 +35,7 @@ def imap_unescape(v):
     return v
 
 
-class ImapAccount:
+class ImapAccount(AccountBase):
     @classmethod
     async def initialize(cls, loop, host, port, username, password, ssl=False):
         # TODO: STARTTLS support?

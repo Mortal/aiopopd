@@ -4,9 +4,8 @@ import base64
 import asyncio
 import threading
 import exchangelib
-from mailtk.data import Mailbox
-from mailtk.data import ThreadInfo
-from mailtk.data import Flag
+from mailtk.data import Mailbox, ThreadInfo, Flag
+from mailtk.accounts.base import AccountBase
 
 
 class MailboxExchange(Mailbox):
@@ -16,7 +15,7 @@ class ThreadInfoExchange(ThreadInfo):
     _fields = 'folder message_id'
 
 
-class ExchangeAccount:
+class ExchangeAccount(AccountBase):
     @classmethod
     async def initialize(cls, loop, host, username, password, email):
         account = cls(loop, host, username, password, email)

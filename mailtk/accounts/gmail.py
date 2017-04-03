@@ -9,6 +9,7 @@ import threading
 import email.message
 
 from mailtk.data import ThreadInfo, Mailbox
+from mailtk.accounts.base import AccountBase
 
 from apiclient import discovery
 from oauth2client import client
@@ -32,7 +33,7 @@ class ThreadInfoGmail(ThreadInfo):
     _fields = 'data'
 
 
-class GmailAccount:
+class GmailAccount(AccountBase):
     @classmethod
     async def initialize(cls, loop, credential_path=None):
         if credential_path is None:
