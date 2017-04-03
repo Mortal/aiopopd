@@ -1,5 +1,6 @@
 import asyncio
 from mailtk.data import Mailbox, ThreadInfo
+from mailtk.accounts.base import AccountBase
 import traceback
 import pprint
 import contextlib
@@ -79,7 +80,7 @@ class Controller:
     async def init_account(self, account_name, get_account):
         try:
             with self.set_status('Login %s...' % account_name):
-                account = await get_account(self)
+                account: AccountBase = await get_account(self)
         except Exception:
             self.log_exception("Failed to connect to %r" %
                                (account_name,))
