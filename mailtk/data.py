@@ -13,6 +13,27 @@ from enum import Enum
 from mailtk.namedtuple_with_abc import namedtuple
 
 
+try:
+    # Don't redefine when reloading mailtk/data.py
+    Pending
+except NameError:
+    class Pending:
+        '''
+        Special value indicating that a field will be retrieved from a remote
+        server.
+        '''
+        def __bool__(self):
+            return False
+
+        def __str__(self):
+            return '<pending>'
+
+        def __repr__(self):
+            return '%s.%s' % (self.__module__, self.__class__.__name__)
+
+    Pending = Pending()
+
+
 class Flag(Enum):
     read = 'read'
     unread = 'unread'
