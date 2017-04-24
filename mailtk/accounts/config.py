@@ -1,20 +1,40 @@
+import asyncio
 import importlib
 import subprocess
 import configparser
 
 
+class SubprocessBackend:
+    def __init__(self, *cmdline, maxcalls=1):
+        self.cmdline = tuple(cmdline)
+        self.maxcalls = maxcalls
+        self._calls = asyncio.Semaphore(maxcalls)
+
+    async def __call__(self, arg, loop):
+        await self._calls.acquire()
+        try:
+            stdout = await loop.run_in_executor(
+                None, lambda: subprocess.check_output(
+                    self.cmdline + (arg,), stdin=subprocess.DEVNULL,
+                    universal_newlines=True))
+            return stdout.splitlines()[0]
+        finally:
+            self._calls.release()
+
+
+PASSWORD_BACKENDS = {
+    'plain': asyncio.coroutine(lambda arg, loop: arg),
+    'pass': SubprocessBackend('pass'),
+}
+
+
 async def get_password_from_spec(loop, spec):
     kind, arg = spec.split(':')
-    if kind == 'pass':
-        stdout = await loop.run_in_executor(
-            None, lambda: subprocess.check_output(
-                ('pass', arg), stdin=subprocess.DEVNULL,
-                universal_newlines=True))
-        return stdout.splitlines()[0]
-    elif kind == 'plain':
-        return arg
-    else:
+    try:
+        backend = PASSWORD_BACKENDS[kind]
+    except KeyError:
         raise ValueError(kind)
+    return await backend(arg, loop=loop)
 
 
 def get_account(fields):
