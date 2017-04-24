@@ -2,6 +2,17 @@
 
 Email client based on an [asyncio Tkinter event loop](https://github.com/Mortal/aiotkinter.git).
 
+## Goals
+
+The first pre-alpha version will be released Soon™.
+Until then, the following vaporware goals should be kept in mind during development:
+
+* Fast GUI, aggressively displaying cached mail folder data
+* Native Google API client implementation for Gmail
+* Native Exchange Web Services implementation for corporate email
+* IMAP-client for all others
+* Rich internal account interface for displaying partially completed folder lists
+
 ## Configuration
 
 Create a file named `accounts.ini` in the directory from which you run
