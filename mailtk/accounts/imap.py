@@ -108,17 +108,22 @@ class ImapAccount(AccountBase):
             (k, message_bytes), = message_value.items()
             assert k.startswith(b'BODY')
             mime = email.message_from_bytes(message_bytes)
+            assert isinstance(mime, email.message.Message)
 
             def header(k, d=None):
                 v = mime[k]
+                if isinstance(v, email.header.Header):
+                    return str(v)
+                assert isinstance(v, (str, type(None))), type(v)
                 return d if v is None else str(decode_any_header(v))
 
             message_id = header('Message-ID')
+            date_header = header('Date')
             return message_id, ThreadMessage(
                 flag=flag,
                 size=size,
                 date=email.utils.parsedate_to_datetime(
-                    header('Date')),
+                    date_header) if date_header is not None else None,
                 from_=header('From'),
                 to=header('To'),
                 cc=header('Cc'),
@@ -143,7 +148,7 @@ class ImapAccount(AccountBase):
                 toplevel.append(m)
 
         def thread_date(m):
-            return max([m.date] +
+            return max([(m.date is not None, m.date and m.date.tzinfo is None, m.date)] +
                        [thread_date(c) for c in m.children])
 
         toplevel.sort(key=thread_date, reverse=True)
