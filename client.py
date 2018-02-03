@@ -11,7 +11,7 @@ def main():
         except poplib.error_proto as exn:
             print('<<<', exn)
         else:
-            print('<<<', result.decode())
+            print('<<<', result.decode() if isinstance(result, bytes) else result)
 
     invoke('getwelcome')
     invoke('capa')

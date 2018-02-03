@@ -165,7 +165,16 @@ class POP(asyncio.StreamReaderProtocol):
 
     @command('TRANSACTION')
     async def pop3_RETR(self, arg):
-        n = int(arg)
+        try:
+            n = int('+' + arg)
+        except ValueError:
+            await self.push('-ERR syntax error')
+            return
+        try:
+            message = self.messages[n-1]
+        except IndexError:
+            await self.push('-ERR index out of range')
+            return
         await self.push('+OK message follows')
         for line in message:
             await self.push(line)
@@ -173,11 +182,20 @@ class POP(asyncio.StreamReaderProtocol):
 
     @command('TRANSACTION')
     async def pop3_DELE(self, arg):
-        n = int(arg)
-        if self.messages[n-1].deleted:
+        try:
+            n = int('+' + arg)
+        except ValueError:
+            await self.push('-ERR syntax error')
+            return
+        try:
+            message = self.messages[n-1]
+        except IndexError:
+            await self.push('-ERR index out of range')
+            return
+        if message.deleted:
             await self.push('-ERR already deleted')
             return
-        self.messages[n-1].deleted = True
+        message.deleted = True
         await self.push('+OK message deleted')
 
     @command('TRANSACTION')
