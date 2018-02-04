@@ -62,9 +62,12 @@ class ImapBackend:
             self._command_queue.task_done()
             os.write(self._ready_w, b'x')
             return
+        shutdown_called = False
         try:
             while True:
                 future, method, args = self._command_queue.get()
+                if method in ('shutdown', 'logout'):
+                    shutdown_called = True
                 if method is self.BREAK:
                     break
                 elif method is self.NOOP:
@@ -79,7 +82,8 @@ class ImapBackend:
                 self._command_queue.task_done()
                 os.write(self._ready_w, b'x')
         finally:
-            conn.shutdown()
+            if not shutdown_called:
+                conn.shutdown()
 
         assert method is self.BREAK
         self._response_queue.put((future, None))
