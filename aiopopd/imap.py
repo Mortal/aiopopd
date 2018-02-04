@@ -1,11 +1,11 @@
-from collections import namedtuple
+import asyncio
 from aiopopd.imap_backend import ImapBackend
 
 
 class Message:
     def __init__(self, uid, deleted, size):
         self.uid = uid
-        self.deleted = True
+        self.deleted = deleted
         self.size = size
 
 
@@ -29,13 +29,16 @@ class ImapHandler:
             server.username = None
             return '-ERR %s' % exn
         server.password = password
+        server.state = 'TRANSACTION'
         self.messages = await self.list_messages()
+        print(self.messages)
         self.to_delete = []
         return '+OK remote login successful'
 
     async def list_messages(self):
         n_messages = await self.backend.select_folder('INBOX')
         if n_messages == 0:
+            print("no messages in inbox")
             return []
         message_ids = await self.backend.search()
         params = [
@@ -46,6 +49,7 @@ class ImapHandler:
         data = await self.backend.fetch(message_ids, params)
 
         def is_deleted(imap_flags):
+            print(imap_flags)
             return SEEN in imap_flags
 
         def parse(message_key, message_value):

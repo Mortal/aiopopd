@@ -6,7 +6,7 @@ from aiopopd.imap import ImapHandler
 
 
 parser = argparse.ArgumentParser()
-parser.add_argument('-h', '--imap-hostname', required=True)
+parser.add_argument('-H', '--imap-hostname', required=True)
 parser.add_argument('-p', '--imap-port', required=True, type=int)
 parser.add_argument('-s', '--imap-ssl', action='store_true')
 parser.add_argument('-P', '--listen-port', required=True, type=int)

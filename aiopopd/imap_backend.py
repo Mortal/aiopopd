@@ -1,5 +1,6 @@
 import os
 import re
+import ssl
 import queue
 import asyncio
 import threading
@@ -50,7 +51,7 @@ class ImapBackend:
         # Run commands in thread
         if self._ssl:
             kwargs = dict(
-                ssl_context=imapclient.create_default_context())
+                ssl_context=ssl.create_default_context())
         else:
             kwargs = {}
         try:
