@@ -21,11 +21,13 @@ parser = argparse.ArgumentParser()
 parser.add_argument('-u', '--username', required=True)
 parser.add_argument('-p', '--password-source', required=True, type=get_password, dest='password')
 parser.add_argument('-d', '--delete', action='store_true')
+parser.add_argument('-s', '--ssl', action='store_true')
 
 
 def main():
     args = parser.parse_args()
-    client = poplib.POP3('127.0.0.1', 1100)
+    class_ = poplib.POP3_SSL if args.ssl else poplib.POP3
+    client = class_('localhost', 1100)
 
     def invoke(method, *args, long=False):
         if method == 'pass_':
