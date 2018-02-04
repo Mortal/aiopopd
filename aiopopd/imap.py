@@ -1,5 +1,6 @@
 import asyncio
 from aiopopd.imap_backend import ImapBackend
+from aiopopd.pop import log
 
 
 class Message:
@@ -32,14 +33,14 @@ class ImapHandler:
         server.password = password
         server.state = 'TRANSACTION'
         self.messages = await self.list_messages()
-        print(self.messages)
+        log.info('%r %s messages', username, len(self.messages))
         self.to_delete = []
         return '+OK remote login successful'
 
     async def list_messages(self):
         n_messages = await self.backend.select_folder('INBOX')
         if n_messages == 0:
-            print("no messages in inbox")
+            log.info('SELECT returned 0 meaning no messages in inbox')
             return []
         message_ids = await self.backend.search()
         params = [
@@ -50,7 +51,6 @@ class ImapHandler:
         data = await self.backend.fetch(message_ids, params)
 
         def is_deleted(imap_flags):
-            print(imap_flags)
             return SEEN in imap_flags
 
         def parse(message_key, message_value):
@@ -66,6 +66,8 @@ class ImapHandler:
         if server.state == 'TRANSACTION':
             to_delete = [m.uid for m in self.messages if m.deleted]
             if to_delete:
+                log.info('%s %s Delete %s message(s)',
+                         server.peer_str, server.username, len(to_delete))
                 await self.backend.add_flags(to_delete, [SEEN])
         if self.backend is not None:
             await self.backend.disconnect()
