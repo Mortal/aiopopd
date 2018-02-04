@@ -20,6 +20,7 @@ def get_password(s):
 parser = argparse.ArgumentParser()
 parser.add_argument('-u', '--username', required=True)
 parser.add_argument('-p', '--password-source', required=True, type=get_password, dest='password')
+parser.add_argument('-d', '--delete', action='store_true')
 
 
 def main():
@@ -59,7 +60,8 @@ def main():
     invoke('retr', 1, long=True)
     invoke('dele', 1)
     invoke('noop')
-    invoke('rset')
+    if not args.delete:
+        invoke('rset')
     invoke('quit')
 
 
