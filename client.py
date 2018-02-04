@@ -18,6 +18,8 @@ def get_password(s):
 
 
 parser = argparse.ArgumentParser()
+parser.add_argument('-H', '--hostname', default='localhost')
+parser.add_argument('-n', '--port', default=1100, type=int)
 parser.add_argument('-u', '--username', required=True)
 parser.add_argument('-p', '--password-source', required=True, type=get_password, dest='password')
 parser.add_argument('-d', '--delete', action='store_true')
@@ -27,7 +29,7 @@ parser.add_argument('-s', '--ssl', action='store_true')
 def main():
     args = parser.parse_args()
     class_ = poplib.POP3_SSL if args.ssl else poplib.POP3
-    client = class_('localhost', 1100)
+    client = class_(args.hostname, args.port)
 
     def invoke(method, *args, long=False):
         if method == 'pass_':
