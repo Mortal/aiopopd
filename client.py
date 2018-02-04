@@ -20,6 +20,7 @@ def get_password(s):
 parser = argparse.ArgumentParser()
 parser.add_argument('-u', '--username', required=True)
 parser.add_argument('-p', '--password-source', required=True, type=get_password, dest='password')
+parser.add_argument('-s', '--starttls', action='store_true')
 
 
 def main():
@@ -51,6 +52,8 @@ def main():
 
     invoke('getwelcome')
     invoke('capa')
+    if args.starttls:
+        invoke('stls')
     invoke('user', args.username)
     invoke('pass_', args.password)
     invoke('stat')
