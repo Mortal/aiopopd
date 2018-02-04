@@ -7,6 +7,7 @@ import functools
 VERSION = '0.1'
 IDENT = 'Python POP3 {}'.format(VERSION)
 log = logging.getLogger('aiopopd.log')
+MISSING = object()
 
 
 def command(state):
@@ -20,13 +21,21 @@ def command(state):
 class Pop3(asyncio.StreamReaderProtocol):
     __ident__ = 'aiopopd'
 
-    def __init__(self, handler):
-        self.hostname = socket.gethostname()
-        self.loop = asyncio.get_event_loop()
+    def __init__(self, handler, *, hostname=None, loop=None):
+        self.hostname = hostname or socket.getfqdn()
+        self.loop = loop or asyncio.get_event_loop()
         super().__init__(
             asyncio.StreamReader(loop=self.loop),
             client_connected_cb=self._client_connected_cb,
             loop=self.loop)
+        self.event_handler = handler
+
+    async def _call_handler_hook(self, command, *args):
+        hook = getattr(self.event_handler, 'handle_' + command, None)
+        if hook is None:
+            return MISSING
+        status = await hook(self, *args)
+        return status
 
     def connection_made(self, transport):
         self.peer = transport.get_extra_info('peername')
@@ -56,9 +65,6 @@ class Pop3(asyncio.StreamReaderProtocol):
         await self._writer.drain()
 
     async def handle_exception(self, error):
-        TODO
-
-    async def update(self):
         TODO
 
     async def _handle_client(self):
@@ -94,129 +100,180 @@ class Pop3(asyncio.StreamReaderProtocol):
             log.exception("Unhandled exception in _handle_client")
             raise
 
+    @staticmethod
+    def parse_message_number(arg):
+        if arg is None:
+            raise ValueError(arg)
+        n = int('+' + arg)
+        if n < 1:
+            raise ValueError(arg)
+        return n
+
     @command('AUTHORIZATION')
     async def pop3_USER(self, arg):
+        # RFC states each arg contains no spaces and is at most 40 characters,
+        # but we ignore that restriction here.
+        if arg is None:
+            await self.push('-ERR Syntax: USER <username>')
+            return
         if self.username is not None:
             await self.push('-ERR already supplied username')
             return
-        self.username = arg
-        await self.push('+OK name is a valid mailbox')
+        status = await self._call_handler_hook('USER', arg)
+        if status is MISSING:
+            self.username = arg
+            status = '+OK name is a valid mailbox'
+        await self.push(status)
 
     @command('AUTHORIZATION')
     async def pop3_PASS(self, arg):
+        if arg is None:
+            await self.push('-ERR Syntax: PASS <password>')
+            return
         if self.username is None:
             await self.push('-ERR must supply username first')
             return
-        self.password = arg
-        self.state = 'TRANSACTION'
-        n = 2
-        m = 320
-        await self.push('+OK maildrop has %s messages (%s octets)' % (n, m))
+        status = await self._call_handler_hook('PASS', self.username, arg)
+        if status is MISSING:
+            self.password = arg
+            self.state = 'TRANSACTION'
+            status = '+OK'
+        await self.push(status)
 
     @command('AUTHORIZATION')
     async def pop3_APOP(self, arg):
-        await self.push('-ERR APOP not implemented')
+        status = await self._call_handler_hook('APOP', arg)
+        await self.push(
+            '-ERR APOP not implemented'
+            if status is MISSING else status)
 
     async def pop3_QUIT(self, arg):
-        if self.state == 'TRANSACTION':
-            await self.update()
-        await self.push('+OK Bye')
+        if arg is not None:
+            await self.push('-ERR Syntax: QUIT')
+            return
+        status = await self._call_handler_hook('QUIT')
+        await self.push('+OK Bye' if status is MISSING else status)
         self._handler_coroutine.cancel()
         self.transport.close()
 
     @command('TRANSACTION')
     async def pop3_STAT(self, arg):
-        n = len(self.messages)  # number of messages in maildrop
-        m = 320  # maildrop size
-        await self.push('+OK %s %s' % (n, m))
+        if arg is not None:
+            await self.push('-ERR Syntax: STAT')
+            return
+        status = await self._call_handler_hook('STAT')
+        await self.push('+OK 0 0' if status is MISSING else status)
 
     @command('TRANSACTION')
     async def pop3_LIST(self, arg):
         if arg is None:
             await self.push('+OK scan listing follows')
-            for n, message in enumerate(self.messages, 1):
-                if message.deleted:
-                    continue
-                m = 120  # exact size of message
-                await self.push('%s %s' % (n, m))
+            n = 1
+            while True:
+                try:
+                    size = self._call_handler_hook('LIST', n)
+                except IndexError:
+                    break
+                if size is MISSING:
+                    break
+                if size is not None:
+                    await self.push('%s %s' % (n, size))
+                n += 1
             await self.push('.')
         else:
-            n = int(arg)
-            m = 120  # exact size of message
-            message = self.messages[n-1]
-            if message is None or message.deleted:
+            try:
+                n = self.parse_message_number(arg)
+            except ValueError:
+                await self.push('-ERR Syntax: LIST [n]')
+                return
+            try:
+                size = self._call_handler_hook('LIST', n)
+            except IndexError:
+                await self.push('-ERR no such message')
+                return
+            if size is None:
                 await self.push('-ERR no such message')
             else:
-                await self.push('+OK %s %s' % (n, m))
+                await self.push('+OK %s %s' % (n, size))
 
     @command('TRANSACTION')
     async def pop3_UIDL(self, arg):
         if arg is None:
-            await self.push('+OK scan listing follows')
-            for n, message in enumerate(self.messages, 1):
-                if message.deleted:
-                    continue
-                m = 'hej'  # unique id of message
-                await self.push('%s %s' % (n, m))
+            await self.push('+OK unique-id listing follows')
+            n = 1
+            while True:
+                try:
+                    uid = self._call_handler_hook('UIDL', n)
+                except IndexError:
+                    break
+                if uid is MISSING:
+                    break
+                if uid:
+                    await self.push('%s %s' % (n, uid))
+                n += 1
             await self.push('.')
         else:
-            n = int(arg)
-            message = self.messages[n-1]
-            m = 'hej'  # unique id of message
-            if message is None or message.deleted:
+            try:
+                n = self.parse_message_number(arg)
+            except ValueError:
+                await self.push('-ERR Syntax: UIDL [n]')
+                return
+            try:
+                uid = self._call_handler_hook('UIDL', n)
+            except IndexError:
+                await self.push('-ERR no such message')
+                return
+            if uid is MISSING:
                 await self.push('-ERR no such message')
             else:
-                await self.push('+OK %s %s' % (n, m))
+                await self.push('+OK %s %s' % (n, uid))
 
     @command('TRANSACTION')
     async def pop3_RETR(self, arg):
         try:
-            n = int('+' + arg)
+            n = self.parse_message_number(arg)
         except ValueError:
-            await self.push('-ERR syntax error')
+            await self.push('-ERR Syntax: RETR <n>')
             return
-        try:
-            message = self.messages[n-1]
-        except IndexError:
-            await self.push('-ERR index out of range')
-            return
-        await self.push('+OK message follows')
-        for line in message:
-            await self.push(line)
-        await self.push('.')
+        status = self._call_handler_hook('RETR', n)
+        if status is MISSING:
+            await self.push('-ERR no such message')
 
     @command('TRANSACTION')
     async def pop3_DELE(self, arg):
         try:
-            n = int('+' + arg)
+            n = self.parse_message_number(arg)
         except ValueError:
-            await self.push('-ERR syntax error')
+            await self.push('-ERR Syntax: DELE <n>')
             return
-        try:
-            message = self.messages[n-1]
-        except IndexError:
-            await self.push('-ERR index out of range')
-            return
-        if message.deleted:
-            await self.push('-ERR already deleted')
-            return
-        message.deleted = True
-        await self.push('+OK message deleted')
+        status = self._call_handler_hook('DELE', n)
+        await self.push('+OK deleted' if status is MISSING else status)
 
     @command('TRANSACTION')
     async def pop3_NOOP(self, arg):
-        await self.push('+OK')
+        if arg is not None:
+            await self.push('-ERR Syntax: NOOP')
+            return
+        status = self._call_handler_hook('NOOP')
+        await self.push('+OK' if status is MISSING else status)
 
     @command('TRANSACTION')
     async def pop3_RSET(self, arg):
-        for message in self.messages:
-            message.deleted = False
-        await self.push('+OK')
+        if arg is not None:
+            await self.push('-ERR Syntax: RSET')
+            return
+        status = self._call_handler_hook('RSET')
+        await self.push('+OK' if status is MISSING else status)
 
     @command('TRANSACTION')
     async def pop3_TOP(self, arg):
-        msg, n = map(int, arg.split())
-        await self.push('+OK top of message follows')
-        for line in self.messages[msg][:n]:
-            await self.push(line)
-        await self.push('.')
+        try:
+            n_str, lines_str = arg.split(' ')
+            n = self.parse_message_number(n_str)
+            lines = int('+' + lines_str)  # allowed to be zero
+        except ValueError:
+            await self.push('-ERR Syntax: TOP <n> <lines>')
+            return
+        status = self._call_handler_hook('TOP', n, lines)
+        if status is MISSING:
+            await self.push('-ERR no such message')
