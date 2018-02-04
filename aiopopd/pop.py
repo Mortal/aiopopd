@@ -1,7 +1,6 @@
 import socket
 import asyncio
 import logging
-import functools
 
 
 VERSION = '0.1'
