@@ -66,7 +66,9 @@ class ImapHandler:
         if server.state == 'TRANSACTION':
             to_delete = [m.uid for m in self.messages if m.deleted]
             if to_delete:
-                self.backend.add_flags(to_delete, [SEEN])
+                log.info('%s %s Delete %s message(s)',
+                         server.peer_str, server.username, len(to_delete))
+                await self.backend.add_flags(to_delete, [SEEN])
         if self.backend is not None:
             await self.backend.disconnect()
             self.backend = None
