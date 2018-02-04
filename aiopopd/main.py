@@ -1,4 +1,5 @@
 import os
+import pwd
 import ssl
 import logging
 import argparse
@@ -13,6 +14,8 @@ parser.add_argument('-H', '--imap-hostname', required=True)
 parser.add_argument('-p', '--imap-port', required=True, type=int)
 parser.add_argument('-s', '--imap-ssl', action='store_true')
 parser.add_argument('-P', '--listen-port', required=True, type=int)
+parser.add_argument('-n', '--no-setuid', action='store_false', dest='setuid')
+parser.add_argument('-l', '--systemd-logging', action='store_true')
 parser.add_argument('--ssl-key')
 parser.add_argument('--ssl-cert')
 parser.add_argument('--ssl-generate', action='store_true')
@@ -41,12 +44,43 @@ def get_ssl_context(args):
     return context
 
 
+class SystemdFormatter(logging.Formatter):
+    PREFIX = {
+        logging.CRITICAL: '<2>',
+        logging.ERROR: '<3>',
+        logging.WARNING: '<4>',
+        logging.INFO: '<6>',
+        logging.DEBUG: '<7>',
+    }
+
+    def format(self, record):
+        s = super().format(record)
+        try:
+            return self.PREFIX[record.levelno] + s
+        except KeyError:
+            return s
+
+
+def handle_setuid(args):
+    if args.setuid:
+        nobody = pwd.getpwnam('nobody').pw_uid
+        try:
+            os.setuid(nobody)
+        except PermissionError:
+            raise SystemExit(
+                'Cannot setuid "nobody"; try running with -n option.')
+
+
 def main():
     args = parser.parse_args()
+    handle_setuid(args)
     ssl_context = get_ssl_context(args)
     logging.basicConfig(level=logging.ERROR)
     log = logging.getLogger('aiopopd.log')
     log.setLevel(logging.DEBUG)
+
+    if args.systemd_logging:
+        log.setFormatter(SystemdFormatter())
 
     def factory():
         return Pop3(ImapHandlerFixed(args.imap_hostname,
