@@ -4,6 +4,11 @@ import logging
 import functools
 
 
+VERSION = '0.1'
+IDENT = 'Python POP3 {}'.format(VERSION)
+log = logging.getLogger('aiopopd.log')
+
+
 def command(state):
     def decorator(fn):
         fn.command_state = state
@@ -12,10 +17,10 @@ def command(state):
     return decorator
 
 
-class POP(asyncio.StreamReaderProtocol):
+class Pop3(asyncio.StreamReaderProtocol):
     __ident__ = 'aiopopd'
 
-    def __init__(self):
+    def __init__(self, handler):
         self.hostname = socket.gethostname()
         self.loop = asyncio.get_event_loop()
         super().__init__(
@@ -215,26 +220,3 @@ class POP(asyncio.StreamReaderProtocol):
         for line in self.messages[msg][:n]:
             await self.push(line)
         await self.push('.')
-
-
-HOST = '127.0.0.1'
-PORT = 1100
-
-
-if __name__ == '__main__':
-    logging.basicConfig(level=logging.ERROR)
-    log = logging.getLogger('mail.log')
-    log.setLevel(logging.DEBUG)
-    loop = asyncio.get_event_loop()
-    loop.set_debug(enabled=True)
-    server = loop.run_until_complete(
-        loop.create_server(POP, host=HOST, port=PORT))
-    log.info('Starting asyncio loop')
-    try:
-        loop.run_forever()
-    except KeyboardInterrupt:
-        pass
-    server.close()
-    log.info('Completed asyncio loop')
-    loop.run_until_complete(server.wait_closed())
-    loop.close()
