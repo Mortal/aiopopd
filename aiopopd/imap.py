@@ -18,6 +18,7 @@ class ImapHandler:
         self.port = port
         self.ssl = ssl
         self.loop = loop or asyncio.get_event_loop()
+        self.backend = None
 
     async def handle_PASS(self, server, username, password):
         try:
@@ -66,6 +67,9 @@ class ImapHandler:
             to_delete = [m.uid for m in self.messages if m.deleted]
             if to_delete:
                 self.backend.add_flags(to_delete, [SEEN])
+        if self.backend is not None:
+            await self.backend.disconnect()
+            self.backend = None
         return '+OK Bye'
 
     async def handle_STAT(self, server):
