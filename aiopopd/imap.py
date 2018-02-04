@@ -1,4 +1,15 @@
+from collections import namedtuple
 from aiopopd.imap_backend import ImapBackend
+
+
+class Message:
+    def __init__(self, uid, deleted, size):
+        self.uid = uid
+        self.deleted = True
+        self.size = size
+
+
+SEEN = br'\Seen'
 
 
 class ImapHandler:
@@ -35,63 +46,55 @@ class ImapHandler:
         data = await self.backend.fetch(message_ids, params)
 
         def is_deleted(imap_flags):
-            return b'\\Seen' in imap_flags
+            return SEEN in imap_flags
 
         def parse(message_key, message_value):
             message_value.pop(b'SEQ', None)
             deleted = is_deleted(message_value.pop(b'FLAGS'))
             size = message_value.pop(b'RFC822.SIZE')
+            return Message(message_key, deleted, size)
 
-            message_id = header('Message-ID')
-            date_header = header('Date')
-            return message_id, ThreadMessage(
-                flag=flag,
-                size=size,
-                date=email.utils.parsedate_to_datetime(
-                    date_header) if date_header is not None else None,
-                from_=header('From'),
-                to=header('To'),
-                cc=header('Cc'),
-                subject=header('Subject'),
-                message_id=message_id,
-                references=header('References', '').split(),
-                in_reply_to=header('In-Reply-To', '').split(),
-                key=message_key,
-                children=[],
-            )
-
-        messages = dict(parse(k, v) for k, v in data.items())
-        toplevel = []
-        for m in messages.values():
-            for p in m.in_reply_to + m.references:
-                try:
-                    messages[p].children.append(m)
-                    break
-                except KeyError:
-                    pass
-            else:
-                toplevel.append(m)
-
-        def thread_date(m):
-            return max([(m.date is not None, m.date and m.date.tzinfo is None, m.date)] +
-                       [thread_date(c) for c in m.children])
-
-        toplevel.sort(key=thread_date, reverse=True)
-
-        def convert(o: ThreadMessage):
-            v = ThreadInfo(
-                flag=o.flag,
-                size=o.size,
-                date=o.date,
-                sender=o.from_,
-                recipients=', '.join(filter(None, (o.to, o.cc))),
-                subject=o.subject,
-                children=[convert(c) for c in o.children],
-                excerpt='',
-            )
-            return ThreadInfoImap(v, mailbox, o.key)
-
-        return [convert(t) for t in toplevel]
+        all_messages = (parse(k, v) for k, v in data.items())
+        return [m for m in all_messages if not m.deleted]
 
     async def handle_QUIT(self, server):
         if server.state == 'TRANSACTION':
+            to_delete = [m.uid for m in self.messages if m.deleted]
+            if to_delete:
+                self.backend.add_flags(to_delete, [SEEN])
+        return '+OK Bye'
+
+    async def handle_STAT(self, server):
+        n = sum(1 for m in self.messages if not m.deleted)
+        size = sum(m.size for m in self.messages if not m.deleted)
+        return '+OK %s %s' % (n, size)
+
+    async def handle_LIST(self, server, n):
+        m = self.messages[n-1]
+        if not m.deleted:
+            return m.size
+
+    async def handle_UIDL(self, server, n):
+        m = self.messages[n-1]
+        if not m.deleted:
+            return m.uid
+
+    async def handle_RETR(self, server, n):
+        m = self.messages[n-1]
+        if m.deleted:
+            return '-ERR message deleted'
+        params = ['RFC822']
+        data, = (await self.backend.fetch([m.uid], params)).values()
+        await server.push_multi('+OK message follows', data[b'RFC822'])
+
+    async def handle_DELE(self, server, n):
+        m = self.messages[n-1]
+        if m.deleted:
+            return '-ERR message already deleted'
+        m.deleted = True
+        return '+OK deleted'
+
+    async def handle_RSET(self, server):
+        for m in self.messages:
+            m.deleted = False
+        return '+OK'

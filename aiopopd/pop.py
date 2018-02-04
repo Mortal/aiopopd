@@ -64,6 +64,16 @@ class Pop3(asyncio.StreamReaderProtocol):
         log.debug(response)
         await self._writer.drain()
 
+    async def push_multi(self, status, data):
+        await self.push(status)
+        for line in data.split(b'\r\n'):
+            if line.startswith(b'.'):
+                line = b'.' + line
+            response = line + b'\r\n'
+            self._writer.write(response)
+            await self._writer.drain()
+        await self.push('.')
+
     async def handle_exception(self, error):
         if hasattr(self.event_handler, 'handle_exception'):
             status = await self.event_handler.handle_exception(error)
@@ -214,8 +224,12 @@ class Pop3(asyncio.StreamReaderProtocol):
     @command('TRANSACTION')
     async def pop3_UIDL(self, arg):
         if arg is None:
-            await self.push('+OK unique-id listing follows')
             n = 1
+            uid = self._call_handler_hook('UIDL', n)
+            if uid is MISSING:
+                await self.push('-ERR not implemented')
+                return
+            await self.push('+OK unique-id listing follows')
             while True:
                 try:
                     uid = self._call_handler_hook('UIDL', n)
@@ -239,9 +253,11 @@ class Pop3(asyncio.StreamReaderProtocol):
                 await self.push('-ERR no such message')
                 return
             if uid is MISSING:
-                await self.push('-ERR no such message')
-            else:
+                await self.push('-ERR not implemented')
+            elif uid:
                 await self.push('+OK %s %s' % (n, uid))
+            else:
+                await self.push('-ERR no such message')
 
     @command('TRANSACTION')
     async def pop3_RETR(self, arg):
@@ -250,9 +266,13 @@ class Pop3(asyncio.StreamReaderProtocol):
         except ValueError:
             await self.push('-ERR Syntax: RETR <n>')
             return
-        status = self._call_handler_hook('RETR', n)
-        if status is MISSING:
-            await self.push('-ERR no such message')
+        try:
+            status = self._call_handler_hook('RETR', n)
+        except IndexError:
+            status = '-ERR no such message'
+        if status is not None:
+            await self.push('-ERR no such message'
+                            if status is MISSING else status)
 
     @command('TRANSACTION')
     async def pop3_DELE(self, arg):
@@ -261,7 +281,10 @@ class Pop3(asyncio.StreamReaderProtocol):
         except ValueError:
             await self.push('-ERR Syntax: DELE <n>')
             return
-        status = self._call_handler_hook('DELE', n)
+        try:
+            status = self._call_handler_hook('DELE', n)
+        except IndexError:
+            status = '-ERR no such message'
         await self.push('+OK deleted' if status is MISSING else status)
 
     @command('TRANSACTION')
@@ -282,6 +305,7 @@ class Pop3(asyncio.StreamReaderProtocol):
 
     @command('TRANSACTION')
     async def pop3_TOP(self, arg):
+        # Send headers + blank + first n lines of body
         try:
             n_str, lines_str = arg.split(' ')
             n = self.parse_message_number(n_str)
@@ -291,4 +315,4 @@ class Pop3(asyncio.StreamReaderProtocol):
             return
         status = self._call_handler_hook('TOP', n, lines)
         if status is MISSING:
-            await self.push('-ERR no such message')
+            await self.push('-ERR TOP not implemented')
