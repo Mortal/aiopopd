@@ -56,6 +56,7 @@ class Pop3(asyncio.StreamReaderProtocol):
 
     def connection_made(self, transport):
         self.peer = transport.get_extra_info('peername')
+        self.peer_str = '%s:%s' % self.peer
         self.username = self.password = None
 
         seen_starttls = (self._original_transport is not None)
@@ -75,13 +76,13 @@ class Pop3(asyncio.StreamReaderProtocol):
         else:
             super().connection_made(transport)
             self.transport = transport
-            log.info('%r Connection opened', self.peer)
+            log.info('%s Connection opened', self.peer_str)
             # Process the client's requests.
             self._handler_coroutine = self.loop.create_task(
                 self._handle_client())
 
     def connection_lost(self, error):
-        log.info('%r Connection lost', self.peer)
+        log.info('%s Connection lost', self.peer_str)
         # If STARTTLS was issued, then our transport is the SSL protocol
         # transport, and we need to close the original transport explicitly,
         # otherwise an unexpected eof_received() will be called *after* the
@@ -94,7 +95,7 @@ class Pop3(asyncio.StreamReaderProtocol):
         self.transport = None
 
     def eof_received(self):
-        log.info('%r EOF received', self.peer)
+        log.info('%s EOF received', self.peer_str)
         self._handler_coroutine.cancel()
         if self.session.ssl is not None:            # pragma: nomswin
             # If STARTTLS was issued, return False, because True has no effect
@@ -113,7 +114,7 @@ class Pop3(asyncio.StreamReaderProtocol):
         self._writer = writer
 
     async def push(self, status):
-        log.debug('%r %r', self.peer, status)
+        log.debug('%s %r', self.peer_str, status)
         response = (status + '\r\n').encode('ascii')
         self._writer.write(response)
         await self._writer.drain()
@@ -123,7 +124,7 @@ class Pop3(asyncio.StreamReaderProtocol):
         if isinstance(data, list):
             data = b'\r\n'.join(data)
         lines = data.split(b'\r\n')
-        log.debug('%r (%s lines)', self.peer, len(lines))
+        log.debug('%s (%s lines)', self.peer_str, len(lines))
         for line in lines:
             if line.startswith(b'.'):
                 line = b'.' + line
@@ -148,7 +149,7 @@ class Pop3(asyncio.StreamReaderProtocol):
             await self.push('+OK {} {}'.format(self.hostname, self.__ident__))
             while self.transport is not None:
                 line = await self._reader.readline()
-                log.info('%r %s', self.peer, line.split()[0])
+                log.debug('%s %s', self.peer_str, line.split()[0])
                 line = line.rstrip(b'\r\n')
                 if not line:
                     await self.push('-ERR Error: bad syntax')
@@ -175,9 +176,9 @@ class Pop3(asyncio.StreamReaderProtocol):
                 await method(arg)
         except asyncio.CancelledError:
             if self.transport is None:
-                log.info('%r _handle_client() returning on CancelledError', self.peer)
+                log.info('%s _handle_client() returning on CancelledError', self.peer_str)
             else:
-                log.exception('%r Unexpected CancelledError', self.peer)
+                log.exception('%s Unexpected CancelledError', self.peer_str)
                 raise
         except Exception as error:
             try:
@@ -268,11 +269,16 @@ class Pop3(asyncio.StreamReaderProtocol):
         if self.username is None:
             await self.push('-ERR must supply username first')
             return
-        status = await self._call_handler_hook('PASS', self.username, arg)
+        username = self.username
+        status = await self._call_handler_hook('PASS', username, arg)
         if status is MISSING:
             self.password = arg
             self.state = 'TRANSACTION'
             status = '+OK'
+        if status.startswith('+OK'):
+            log.info('%s Logged in as %r', self.peer_str, self.username)
+        else:
+            log.info('%s Login attempt as %r failed: %r', self.peer_str, username, status)
         await self.push(status)
 
     @command('AUTHORIZATION')
