@@ -47,10 +47,13 @@ class Pop3(asyncio.StreamReaderProtocol):
             self._handle_client())
 
     def connection_lost(self, error):
+        log.info('%s Connection lost', self.peer_str)
         super().connection_lost(error)
         self._handler_coroutine.cancel()
+        self.transport = None
 
     def eof_received(self):
+        log.info('%s EOF received', self.peer_str)
         self._handler_coroutine.cancel()
         return super().eof_received()
 
@@ -59,14 +62,18 @@ class Pop3(asyncio.StreamReaderProtocol):
         self._writer = writer
 
     async def push(self, status):
+        log.debug('%s %r', self.peer_str, status)
         response = (status + '\r\n').encode('ascii')
         self._writer.write(response)
-        log.debug(response)
         await self._writer.drain()
 
     async def push_multi(self, status, data):
         await self.push(status)
-        for line in data.split(b'\r\n'):
+        if isinstance(data, list):
+            data = b'\r\n'.join(data)
+        lines = data.split(b'\r\n')
+        log.debug('%s (%s lines)', self.peer_str, len(lines))
+        for line in lines:
             if line.startswith(b'.'):
                 line = b'.' + line
             response = line + b'\r\n'
@@ -87,15 +94,13 @@ class Pop3(asyncio.StreamReaderProtocol):
     async def _handle_client(self):
         try:
             self.state = 'AUTHORIZATION'
-            log.info('%r handling connection', self.peer)
             await self.push('+OK {} {}'.format(self.hostname, self.__ident__))
             while self.transport is not None:
                 line = await self._reader.readline()
-                log.debug('_handle_client readline: %s', line)
+                log.debug('%s %s', self.peer_str, line.split()[0])
                 line = line.rstrip(b'\r\n')
-                log.info('%r Data: %s', self.peer, line)
                 if not line:
-                    await self.push('500 Error: bad syntax')
+                    await self.push('-ERR Error: bad syntax')
                     continue
                 line = line.decode('ascii')
                 try:
@@ -113,6 +118,12 @@ class Pop3(asyncio.StreamReaderProtocol):
                         '-ERR command "%s" not recognized' % command)
                     continue
                 await method(arg)
+        except asyncio.CancelledError:
+            if self.transport is None:
+                log.info('%s _handle_client() returning on CancelledError', self.peer_str)
+            else:
+                log.exception('%s Unexpected CancelledError', self.peer_str)
+                raise
         except Exception as error:
             try:
                 status = await self.handle_exception(error)
@@ -158,11 +169,16 @@ class Pop3(asyncio.StreamReaderProtocol):
         if self.username is None:
             await self.push('-ERR must supply username first')
             return
-        status = await self._call_handler_hook('PASS', self.username, arg)
+        username = self.username
+        status = await self._call_handler_hook('PASS', username, arg)
         if status is MISSING:
             self.password = arg
             self.state = 'TRANSACTION'
             status = '+OK'
+        if status.startswith('+OK'):
+            log.info('%s Logged in as %r', self.peer_str, self.username)
+        else:
+            log.info('%s Login attempt as %r failed: %r', self.peer_str, username, status)
         await self.push(status)
 
     @command('AUTHORIZATION')
@@ -192,19 +208,21 @@ class Pop3(asyncio.StreamReaderProtocol):
     @command('TRANSACTION')
     async def pop3_LIST(self, arg):
         if arg is None:
-            await self.push('+OK scan listing follows')
             n = 1
+            status = '+OK scan listing follows'
+            lines = []
             while True:
                 try:
                     size = await self._call_handler_hook('LIST', n)
                 except IndexError:
                     break
                 if size is MISSING:
-                    break
+                    await self.push('-ERR not implemented')
+                    return
                 if size is not None:
-                    await self.push('%s %s' % (n, size))
+                    lines.append(('%s %s' % (n, size)).encode('ascii'))
                 n += 1
-            await self.push('.')
+            await self.push_multi(status, lines)
         else:
             try:
                 n = self.parse_message_number(arg)
@@ -225,25 +243,20 @@ class Pop3(asyncio.StreamReaderProtocol):
     async def pop3_UIDL(self, arg):
         if arg is None:
             n = 1
-            try:
-                uid = await self._call_handler_hook('UIDL', n)
-            except IndexError:
-                uid = None
-            if uid is MISSING:
-                await self.push('-ERR not implemented')
-                return
-            await self.push('+OK unique-id listing follows')
+            status = '+OK unique-id listing follows'
+            lines = []
             while True:
                 try:
                     uid = await self._call_handler_hook('UIDL', n)
                 except IndexError:
                     break
                 if uid is MISSING:
-                    break
+                    await self.push('-ERR not implemented')
+                    return
                 if uid:
-                    await self.push('%s %s' % (n, uid))
+                    lines.append(('%s %s' % (n, uid)).encode('ascii'))
                 n += 1
-            await self.push('.')
+            await self.push_multi(status, lines)
         else:
             try:
                 n = self.parse_message_number(arg)
