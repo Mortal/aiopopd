@@ -145,6 +145,21 @@ class Pop3(asyncio.StreamReaderProtocol):
             raise ValueError(arg)
         return n
 
+    async def pop3_CAPA(self, arg):
+        if arg is not None:
+            await self.push('-ERR Syntax: CAPA')
+            return
+        status = await self._call_handler_hook('CAPA')
+        if status is MISSING:
+            # PIPELINING?
+            caps = [
+                b'USER',
+                b'UIDL',
+            ]
+            if hasattr(self.event_handler, 'handle_TOP'):
+                caps.append(b'TOP')
+            await self.push_multi('+OK Capability list follows', caps)
+
     @command('AUTHORIZATION')
     async def pop3_USER(self, arg):
         # RFC states each arg contains no spaces and is at most 40 characters,
