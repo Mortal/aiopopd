@@ -38,7 +38,10 @@ class Pop3(asyncio.StreamReaderProtocol):
 
     def connection_made(self, transport):
         self.peer = transport.get_extra_info('peername')
-        self.peer_str = '%s:%s' % self.peer
+        try:
+            self.peer_str = '%s:%s' % self.peer
+        except (ValueError, TypeError):
+            self.peer_str = str(self.peer)
         self.username = self.password = None
         super().connection_made(transport)
         self.transport = transport
