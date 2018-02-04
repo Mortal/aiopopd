@@ -1,7 +1,8 @@
+import ssl
 import socket
 import asyncio
 import logging
-import functools
+from asyncio import sslproto
 
 
 VERSION = '0.1'
@@ -21,7 +22,12 @@ def command(state):
 class Pop3(asyncio.StreamReaderProtocol):
     __ident__ = 'aiopopd'
 
-    def __init__(self, handler, *, hostname=None, loop=None):
+    def __init__(self, handler,
+                 *,
+                 hostname=None,
+                 tls_context=None,
+                 require_starttls=False,
+                 loop=None):
         self.hostname = hostname or socket.getfqdn()
         self.loop = loop or asyncio.get_event_loop()
         super().__init__(
@@ -29,6 +35,17 @@ class Pop3(asyncio.StreamReaderProtocol):
             client_connected_cb=self._client_connected_cb,
             loop=self.loop)
         self.event_handler = handler
+        self._original_transport = None
+        self.transport = None
+        self._tls_handshake_okay = True
+        self._tls_protocol = None
+        self.tls_context = tls_context
+        if tls_context:
+            # Through rfc3207 part 4.1 certificate checking is part of SMTP
+            # protocol, not SSL layer.
+            self.tls_context.check_hostname = False
+            self.tls_context.verify_mode = ssl.CERT_NONE
+        self.require_starttls = tls_context and require_starttls
 
     async def _call_handler_hook(self, command, *args):
         hook = getattr(self.event_handler, 'handle_' + command, None)
@@ -40,18 +57,55 @@ class Pop3(asyncio.StreamReaderProtocol):
     def connection_made(self, transport):
         self.peer = transport.get_extra_info('peername')
         self.username = self.password = None
-        super().connection_made(transport)
-        self.transport = transport
-        self._handler_coroutine = self.loop.create_task(
-            self._handle_client())
-        self.messages = []  # TODO
+
+        seen_starttls = (self._original_transport is not None)
+        if self.transport is not None and seen_starttls:
+            # It is STARTTLS connection over normal connection.
+            self._reader._transport = transport
+            self._writer._transport = transport
+            self.transport = transport
+            # Do SSL certificate checking as rfc3207 part 4.1 says.  Why is
+            # _extra a protected attribute?
+            self.ssl = self._tls_protocol._extra
+            handler = getattr(self.event_handler, 'handle_STARTTLS', None)
+            if handler is None:
+                self._tls_handshake_okay = True
+            else:
+                self._tls_handshake_okay = handler(self)
+        else:
+            super().connection_made(transport)
+            self.transport = transport
+            log.info('Peer: %r', self.peer)
+            # Process the client's requests.
+            self._handler_coroutine = self.loop.create_task(
+                self._handle_client())
 
     def connection_lost(self, error):
+        log.info('%r connection lost', self.peer)
+        # If STARTTLS was issued, then our transport is the SSL protocol
+        # transport, and we need to close the original transport explicitly,
+        # otherwise an unexpected eof_received() will be called *after* the
+        # connection_lost().  At that point the stream reader will already be
+        # destroyed and we'll get a traceback in super().eof_received() below.
+        if self._original_transport is not None:
+            self._original_transport.close()
         super().connection_lost(error)
         self._handler_coroutine.cancel()
+        self.transport = None
 
     def eof_received(self):
+        log.info('%r EOF received', self.peer)
         self._handler_coroutine.cancel()
+        if self.session.ssl is not None:            # pragma: nomswin
+            # If STARTTLS was issued, return False, because True has no effect
+            # on an SSL transport and raises a warning. Our superclass has no
+            # way of knowing we switched to SSL so it might return True.
+            #
+            # This entire method seems not to be called during any of the
+            # starttls tests on Windows.  I don't really know why, but it
+            # causes these lines to fail coverage, hence the `nomswin` pragma
+            # above.
+            return False
         return super().eof_received()
 
     def _client_connected_cb(self, reader, writer):
@@ -66,6 +120,8 @@ class Pop3(asyncio.StreamReaderProtocol):
 
     async def push_multi(self, status, data):
         await self.push(status)
+        if isinstance(data, list):
+            data = b'\r\n'.join(data)
         for line in data.split(b'\r\n'):
             if line.startswith(b'.'):
                 line = b'.' + line
@@ -102,6 +158,10 @@ class Pop3(asyncio.StreamReaderProtocol):
                     command, arg = line.split(' ', 1)
                 except ValueError:
                     command, arg = line, None
+                if not self._tls_handshake_okay and command != 'QUIT':
+                    await self.push(
+                        '554 Command refused due to lack of security')
+                    continue
                 method = getattr(self, 'pop3_' + command, None)
                 method_state = getattr(method, 'command_state', None)
                 if method_state is not None and method_state != self.state:
@@ -113,6 +173,12 @@ class Pop3(asyncio.StreamReaderProtocol):
                         '-ERR command "%s" not recognized' % command)
                     continue
                 await method(arg)
+        except asyncio.CancelledError:
+            if self.transport is None:
+                log.info('_handle_client() returning on CancelledError')
+            else:
+                log.exception('Unexpected CancelledError')
+                raise
         except Exception as error:
             try:
                 status = await self.handle_exception(error)
@@ -133,6 +199,51 @@ class Pop3(asyncio.StreamReaderProtocol):
         if n < 1:
             raise ValueError(arg)
         return n
+
+    async def pop3_CAPA(self, arg):
+        if arg is not None:
+            await self.push('-ERR Syntax: CAPA')
+            return
+        status = await self._call_handler_hook('CAPA')
+        if status is MISSING:
+            # PIPELINING?
+            caps = [
+                b'USER',
+                b'UIDL',
+            ]
+            if self.tls_context:
+                caps.append(b'STARTTLS')
+            if hasattr(self.event_handler, 'handle_TOP'):
+                caps.append(b'TOP')
+            await self.push_multi('+OK Capability list follows', caps)
+
+    @command('AUTHORIZATION')
+    async def pop3_STLS(self, arg):
+        log.info('%r STARTTLS', self.peer)
+        if arg is not None:
+            await self.push('-ERR Syntax: STLS')
+            return
+        if not self.tls_context:
+            await self.push('-ERR TLS not available')
+            return
+        await self.push('+OK Begin TLS negotiation')
+        # aiopopd note: the following was copied from aiosmtpd.
+        # Create SSL layer.
+        self._tls_protocol = sslproto.SSLProtocol(
+            self.loop,
+            self,
+            self.tls_context,
+            None,
+            server_side=True)
+        # Reconfigure transport layer.  Keep a reference to the original
+        # transport so that we can close it explicitly when the connection is
+        # lost.  XXX BaseTransport.set_protocol() was added in Python 3.5.3 :(
+        self._original_transport = self.transport
+        self._original_transport._protocol = self._tls_protocol
+        # Reconfigure the protocol layer.  Why is the app transport a protected
+        # property, if it MUST be used externally?
+        self.transport = self._tls_protocol._app_transport
+        self._tls_protocol.connection_made(self._original_transport)
 
     @command('AUTHORIZATION')
     async def pop3_USER(self, arg):
