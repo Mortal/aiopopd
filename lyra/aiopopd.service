@@ -1,0 +1,7 @@
+[Unit]
+Description=aiopopd
+
+[Service]
+ExecStart=/home/rav/aiopopd/.venv/bin/python -m aiopopd.server --ssl-key /etc/letsencrypt/live/pop.strova.dk/privkey.pem --ssl-cert /etc/letsencrypt/live/pop.strova.dk/fullchain.pem --systemd-logging --listen-port 995 --path /home/rav/aiopopd/lyra/config --listen-all --hostname pop.strova.dk
+WorkingDirectory=/home/rav/aiopopd
+KillSignal=SIGINT
