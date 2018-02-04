@@ -32,6 +32,7 @@ class Controller:
                     ssl=self.ssl_context))
         except Exception as error:
             self._thread_exception = error
+            ready_event.set()
             return
         self.loop.call_soon(ready_event.set)
         self.loop.run_forever()
