@@ -1,5 +1,4 @@
 import os
-import pwd
 import ssl
 import logging
 import argparse
@@ -61,19 +60,8 @@ class SystemdFormatter(logging.Formatter):
             return s
 
 
-def handle_setuid(args):
-    if args.setuid:
-        nobody = pwd.getpwnam('nobody').pw_uid
-        try:
-            os.setuid(nobody)
-        except PermissionError:
-            raise SystemExit(
-                'Cannot setuid "nobody"; try running with -n option.')
-
-
 def main():
     args = parser.parse_args()
-    handle_setuid(args)
     ssl_context = get_ssl_context(args)
     logging.basicConfig(level=logging.ERROR)
     log = logging.getLogger('aiopopd.log')
@@ -87,10 +75,15 @@ def main():
                                      args.imap_port,
                                      args.imap_ssl))
 
-    controller = Controller(None, port=args.listen_port, ssl_context=ssl_context)
+    controller = Controller(None, port=args.listen_port,
+                            ssl_context=ssl_context, setuid=args.setuid)
     controller.factory = factory
     controller.loop.set_debug(enabled=True)
-    controller.start()
+    try:
+        controller.start()
+    except PermissionError:
+        raise SystemExit(
+            'Cannot setuid "nobody"; try running with -n option.')
     print('Server started; press Return to stop')
     input('')
     controller.stop()

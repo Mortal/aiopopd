@@ -1,4 +1,5 @@
 import os
+import pwd
 import asyncio
 import threading
 
@@ -7,7 +8,7 @@ from aiopopd.pop import Pop3
 
 class Controller:
     def __init__(self, handler, loop=None, hostname=None, port=1100, *,
-                 ready_timeout=1.0, ssl_context=None):
+                 ready_timeout=1.0, ssl_context=None, setuid=False):
         self.handler = handler
         self.hostname = '::1' if hostname is None else hostname
         self.port = port
@@ -18,10 +19,16 @@ class Controller:
         self._thread_exception = None
         self.ready_timeout = os.getenv(
             'AIOPOPD_CONTROLLER_TIMEOUT', ready_timeout)
+        self.setuid = setuid
 
     def factory(self):
         """Allow subclasses to customize the handler/server creation."""
         return Pop3(self.handler)
+
+    def drop_privileges(self):
+        if self.setuid:
+            nobody = pwd.getpwnam('nobody').pw_uid
+            os.setuid(nobody)
 
     def _run(self, ready_event):
         asyncio.set_event_loop(self.loop)
@@ -30,6 +37,7 @@ class Controller:
                 self.loop.create_server(
                     self.factory, host=self.hostname, port=self.port,
                     ssl=self.ssl_context))
+            self.drop_privileges()
         except Exception as error:
             self._thread_exception = error
             ready_event.set()
