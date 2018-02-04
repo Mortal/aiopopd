@@ -1,4 +1,0 @@
-git+https://github.com/Mortal/aiotkinter.git
-imapclient
-google-api-python-client
-git+https://github.com/ecederstrand/exchangelib.git
