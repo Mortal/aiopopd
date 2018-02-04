@@ -4,7 +4,7 @@ import logging
 import argparse
 import subprocess
 from aiopopd.pop import Pop3
-from aiopopd.imap import ImapHandler
+from aiopopd.imap import ImapHandlerFixed
 from aiopopd.controller import Controller
 
 
@@ -49,9 +49,9 @@ def main():
     log.setLevel(logging.DEBUG)
 
     def factory():
-        return Pop3(ImapHandler(args.imap_hostname,
-                                args.imap_port,
-                                args.imap_ssl))
+        return Pop3(ImapHandlerFixed(args.imap_hostname,
+                                     args.imap_port,
+                                     args.imap_ssl))
 
     controller = Controller(None, port=args.listen_port, ssl_context=ssl_context)
     controller.factory = factory

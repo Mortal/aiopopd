@@ -14,19 +14,16 @@ SEEN = br'\Seen'
 
 
 class ImapHandler:
-    def __init__(self, hostname, port, ssl, *, loop=None):
-        self.hostname = hostname
-        self.port = port
-        self.ssl = ssl
+    def __init__(self, *, loop=None):
         self.loop = loop or asyncio.get_event_loop()
         self.backend = None
 
+    async def get_backend(self, username, password):
+        raise NotImplementedError
+
     async def handle_PASS(self, server, username, password):
         try:
-            self.backend = ImapBackend(loop=self.loop, host=self.hostname,
-                                       port=self.port, ssl=self.ssl)
-            await self.backend.connect()
-            await self.backend.login(username, password)
+            self.backend = await self.get_backend(username, password)
         except Exception as exn:
             server.username = None
             return '-ERR %s' % exn
@@ -108,3 +105,18 @@ class ImapHandler:
         for m in self.messages:
             m.deleted = False
         return '+OK'
+
+
+class ImapHandlerFixed(ImapHandler):
+    def __init__(self, hostname, port, ssl, **kwargs):
+        super().__init__(**kwargs)
+        self.hostname = hostname
+        self.port = port
+        self.ssl = ssl
+
+    async def get_backend(self, username, password):
+        backend = ImapBackend(loop=self.loop, host=self.hostname,
+                              port=self.port, ssl=self.ssl)
+        await backend.connect()
+        await backend.login(username, password)
+        return backend
