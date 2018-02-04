@@ -65,7 +65,14 @@ class Pop3(asyncio.StreamReaderProtocol):
         await self._writer.drain()
 
     async def handle_exception(self, error):
-        TODO
+        if hasattr(self.event_handler, 'handle_exception'):
+            status = await self.event_handler.handle_exception(error)
+            return status
+        else:
+            log.exception('POP3 session exception')
+            status = '-ERR Error: ({}) {}'.format(
+                error.__class__.__name__, str(error))
+            return status
 
     async def _handle_client(self):
         try:
@@ -96,9 +103,17 @@ class Pop3(asyncio.StreamReaderProtocol):
                         '-ERR command "%s" not recognized' % command)
                     continue
                 await method(arg)
-        except Exception:
-            log.exception("Unhandled exception in _handle_client")
-            raise
+        except Exception as error:
+            try:
+                status = await self.handle_exception(error)
+            except Exception as error:
+                try:
+                    log.exception('Exception in handle_exception()')
+                    status = '-ERR Error: ({}) {}'.format(
+                        error.__class__.__name__, str(error))
+                except Exception:
+                    status = '-ERR Error: Cannot describe error'
+            await self.push(status)
 
     @staticmethod
     def parse_message_number(arg):
