@@ -122,11 +122,7 @@ class Pop3(asyncio.StreamReaderProtocol):
                     continue
                 await method(arg)
         except asyncio.CancelledError:
-            if self.transport is None:
-                log.info('%s _handle_client() returning on CancelledError', self.peer_str)
-            else:
-                log.exception('%s Unexpected CancelledError', self.peer_str)
-                raise
+            self._writer.close()
         except Exception as error:
             try:
                 status = await self.handle_exception(error)
