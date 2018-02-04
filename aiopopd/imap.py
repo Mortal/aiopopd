@@ -25,6 +25,8 @@ class ImapHandler:
         try:
             self.backend = await self.get_backend(username, password)
         except Exception as exn:
+            log.exception('%s %s Exception in get_backend',
+                          server.peer_str, username)
             server.username = None
             return '-ERR %s' % exn
         server.password = password
