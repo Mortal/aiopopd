@@ -74,7 +74,7 @@ class Pop3(asyncio.StreamReaderProtocol):
         await self.push(status)
         if isinstance(data, list):
             data = b'\r\n'.join(data)
-        lines = data.split(b'\r\n')
+        lines = data.split(b'\r\n') if data else []
         log.debug('%s (%s lines)', self.peer_str, len(lines))
         for line in lines:
             if line.startswith(b'.'):
