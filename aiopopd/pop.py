@@ -42,9 +42,9 @@ class Pop3(asyncio.StreamReaderProtocol):
         self.username = self.password = None
         super().connection_made(transport)
         self.transport = transport
+        log.info('%s Connection opened', self.peer_str)
         self._handler_coroutine = self.loop.create_task(
             self._handle_client())
-        self.messages = []  # TODO
 
     def connection_lost(self, error):
         super().connection_lost(error)
