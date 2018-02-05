@@ -4,7 +4,8 @@ import ssl
 import queue
 import asyncio
 import threading
-import encodings.idna
+# Import encodings.idna to prevent LookupError on some systems
+import encodings.idna  # noqa
 
 from imapclient import IMAPClient
 import email
