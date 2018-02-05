@@ -4,6 +4,7 @@ import ssl
 import queue
 import asyncio
 import threading
+import encodings.idna
 
 from imapclient import IMAPClient
 import email
