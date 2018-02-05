@@ -45,18 +45,18 @@ class Pop3(asyncio.StreamReaderProtocol):
         self.username = self.password = None
         super().connection_made(transport)
         self.transport = transport
-        log.info('%s Connection opened', self.peer_str)
+        log.debug('%s Connection opened', self.peer_str)
         self._handler_coroutine = self.loop.create_task(
             self._handle_client())
 
     def connection_lost(self, error):
-        log.info('%s Connection lost', self.peer_str)
+        log.debug('%s Connection lost', self.peer_str)
         super().connection_lost(error)
         self._handler_coroutine.cancel()
         self.transport = None
 
     def eof_received(self):
-        log.info('%s EOF received', self.peer_str)
+        log.debug('%s EOF received', self.peer_str)
         self._handler_coroutine.cancel()
         return super().eof_received()
 
@@ -192,7 +192,7 @@ class Pop3(asyncio.StreamReaderProtocol):
         if status.startswith('+OK'):
             log.info('%s Logged in as %r', self.peer_str, self.username)
         else:
-            log.info('%s Login attempt as %r failed: %r', self.peer_str, username, status)
+            log.warning('%s Login attempt as %r failed: %r', self.peer_str, username, status)
         await self.push(status)
 
     @command('AUTHORIZATION')

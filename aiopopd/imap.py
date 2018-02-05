@@ -32,14 +32,16 @@ class ImapHandler:
         server.password = password
         server.state = 'TRANSACTION'
         self.messages = await self.list_messages()
-        log.info('%r %s messages', username, len(self.messages))
+        log.info('%s %r %s messages', server.peer_str, username,
+                 len(self.messages))
         self.to_delete = []
         return '+OK remote login successful'
 
     async def list_messages(self):
         n_messages = await self.backend.select_folder('INBOX')
         if n_messages == 0:
-            log.info('SELECT returned 0 meaning no messages in inbox')
+            log.warning('%s %r SELECT returned 0 meaning no messages in inbox',
+                        server.peer_str, username)
             return []
         message_ids = await self.backend.search()
         params = [
