@@ -3,7 +3,7 @@ import pwd
 import asyncio
 import threading
 
-from aiopopd.pop import Pop3
+from aiopopd.pop import Pop3, log
 
 
 class Controller:
@@ -59,6 +59,7 @@ class Controller:
         ready_event.wait(self.ready_timeout)
         if self._thread_exception is not None:
             raise self._thread_exception
+        self.log_start()
 
     def _stop(self):
         self.loop.stop()
@@ -70,3 +71,11 @@ class Controller:
         self.loop.call_soon_threadsafe(self._stop)
         self._thread.join()
         self._thread = None
+        self.log_stop()
+
+    def log_start(self):
+        log.info("POP3 server listening on %s:%s",
+                 self.hostname, self.port)
+
+    def log_stop(self):
+        log.info("POP3 server stopping")
