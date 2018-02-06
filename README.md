@@ -38,9 +38,10 @@ assuming you have configured a webserver to serve http://pop.example.com from
 Running aiopopd
 ---------------
 
+* (Install python3 and [pipenv](https://github.com/pypa/pipenv))
 * Clone the project with git: `git clone https://github.com/Mortal/aiopopd`
 * `cd aiopopd`
-* `pipenv install && pipenv shell`
+* `pipenv install --three && pipenv shell`
 * To run a POP3 server, listening on port 9955, proxying to a fixed IMAP server:
   `python -m aiopopd -H imap.example.com -p 993 --imap-ssl -P 9955 -n --ssl-key key.pem --ssl-cert fullchain.pem --ssl-generate`
 
