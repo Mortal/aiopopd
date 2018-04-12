@@ -21,6 +21,10 @@ class ImapHandler:
     async def get_backend(self, username, password):
         raise NotImplementedError
 
+    def connection_lost(self):
+        if self.backend:
+            self.backend.connection_lost()
+
     async def handle_PASS(self, server, username, password):
         try:
             self.backend = await self.get_backend(username, password)

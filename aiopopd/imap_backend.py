@@ -24,10 +24,22 @@ class ImapBackend:
         self._command_queue = queue.Queue()
         self._response_queue = queue.Queue()
         self._ready_r, self._ready_w = os.pipe()
-        loop.add_reader(self._ready_r, self._ready)
+        self._loop.add_reader(self._ready_r, self._ready)
         self._ready = threading.Event()
         self._thread = threading.Thread(None, self._run)
         self._breaking = False
+
+    def __del__(self):
+        if self._ready_r is not None:
+            os.close(self._ready_r)
+            os.close(self._ready_w)
+            self._ready_r = self._ready_w = None
+
+    def connection_lost(self):
+        self._loop.remove_reader(self._ready_r)
+        os.close(self._ready_r)
+        os.close(self._ready_w)
+        self._ready_r = self._ready_w = None
 
     async def connect(self):
         self._thread.start()

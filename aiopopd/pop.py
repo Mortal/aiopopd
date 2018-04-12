@@ -54,6 +54,7 @@ class Pop3(asyncio.StreamReaderProtocol):
         super().connection_lost(error)
         self._handler_coroutine.cancel()
         self.transport = None
+        self.event_handler.connection_lost()
 
     def eof_received(self):
         log.debug('%s EOF received', self.peer_str)
